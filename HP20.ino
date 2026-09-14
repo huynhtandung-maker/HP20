@@ -29,9 +29,9 @@ double feel=NAN;
 bool sampleOk=false, displayOk=false, cloudReady=false, inFlight=false;
 bool authBlocked=false, remind=false, autoPortal=false, wasConnected=false;
 bool ignoreOldResult=false;
-bool buzzing=false;
+bool buzzing=false, bootBeeping=false;
 uint32_t sampled=0, drawn=0, wifiAttempt=0, offlineSince=0, connectedSince=0;
-uint32_t beepSince=0, lastBeep=0, sendMark=0, waitSeconds=900;
+uint32_t beepSince=0, lastBeep=0, bootBeepSince=0, sendMark=0, waitSeconds=900;
 uint64_t notBefore=0;
 unsigned failures=0;
 const char* cloudState="CHUA CAU HINH";
@@ -43,6 +43,29 @@ uint32_t uiPageSince=0;
 
 bool fresh(uint32_t now) { return sampleOk && !model::elapsed(now,sampled,settings::STALE_MS); }
 void drawText(int y, const String& s) { oled.drawStr(2,y,s.c_str()); }
+model::RoomBand currentBand() { return model::roomBand(temperature,humidity,feel); }
+const char* bandLabel(model::RoomBand b) {
+  switch (b) {
+    case model::RoomBand::Comfortable: return "DE CHIU";
+    case model::RoomBand::Humid: return "AM CAO";
+    case model::RoomBand::Warm: return "BAT DAU NONG";
+    case model::RoomBand::Hot: return "KHO CHIU";
+    case model::RoomBand::SevereHeat: return "RAT KHO CHIU";
+    case model::RoomBand::Cool: return "MAT";
+    default: return "CHO CAM BIEN";
+  }
+}
+void buzzerOff() {
+  if (settings::PASSIVE_BUZZER) noTone(settings::BUZZER_PIN);
+  digitalWrite(settings::BUZZER_PIN,LOW);
+}
+void startBootBuzzer(uint32_t now) {
+  if (!settings::BUZZER_BOOT_TEST || bootBeeping) return;
+  bootBeeping=true; bootBeepSince=now; lastBeep=now;
+  if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN,2200);
+  else digitalWrite(settings::BUZZER_PIN,HIGH);
+  Serial.println("BUZZER boot test: ON");
+}
 // Character-wise scrolling stays inside its own line, including long statuses.
 void scrollLine(int y, String text, uint8_t columns, uint32_t now) {
   for (unsigned i=0;i<text.length();i++)
@@ -99,21 +122,30 @@ void displayTick(uint32_t now) {
       drawText(51,"T "+String(temperature,1)+" C");
       oled.drawStr(72,51,("RH "+String(humidity,1)+"%").c_str());
     } else drawText(51,"DHT22: CHO / LOI SO DO");
-    footer(!fresh(now)?"KIEM TRA CAM BIEN":!isfinite(feel)?"NGOAI MIEN UOC TINH HI":remind?"VUOT NGUONG TU CHON":"UOC TINH, KHONG DO THAN NHIET",uiPage);
+    footer(!fresh(now)?"KIEM TRA CAM BIEN":!isfinite(feel)?"NGOAI MIEN UOC TINH HI":String(bandLabel(currentBand())),uiPage);
   } else if (uiPage==1) {
     title("PHONG / GOI Y"); oled.setFont(u8g2_font_5x7_tf);
     if (!fresh(now)) {
       drawText(24,"Chua co so do hop le"); drawText(37,"Kiem tra DHT22 / day");
       drawText(50,"Bam BOOT: xem ket noi");
-    } else if (remind) {
-      drawText(24,"Vuot nguong ban chon"); drawText(37,"Nghi mat, giam van dong");
-      scrollLine(50,"Uong nuoc phu hop tinh trang suc khoe",24,now);
     } else {
-      drawText(24,"Nhiet do "+String(temperature,1)+" C");
-      drawText(37,"Do am    "+String(humidity,1)+" %");
-      scrollLine(50,config.reminder?"Nhac HI: "+String(config.threshold,1)+" C / giu 2 phut":"Nhac lam mat: chua bat",24,now);
+      model::RoomBand b=currentBand();
+      drawText(24,String("Trang thai: ")+bandLabel(b));
+      if (b==model::RoomBand::SevereHeat) {
+        drawText(37,"Lam mat ngay: AC / quat"); scrollLine(50,"Nghi noi mat, uong nuoc; choang/ngat: goi 115",24,now);
+      } else if (b==model::RoomBand::Hot) {
+        drawText(37,"Tang lam mat, giam tai nhiet"); scrollLine(50,"Nghi ngan, uong nuoc theo nhu cau",24,now);
+      } else if (b==model::RoomBand::Warm) {
+        drawText(37,"Bat quat / tang luu thong khi"); scrollLine(50,"Theo doi met moi khi lam viec",24,now);
+      } else if (b==model::RoomBand::Humid) {
+        drawText(37,"Thong gio khi khong khi sach"); scrollLine(50,"Dung hut am neu co; kiem tra am moc",24,now);
+      } else if (b==model::RoomBand::Cool) {
+        drawText(37,"Theo doi luong gio / trang phuc"); drawText(50,"Duy tri thoai mai khi lam viec");
+      } else {
+        drawText(37,"Duy tri dieu kien hien tai"); drawText(50,"Thong gio theo chat luong ngoai troi");
+      }
     }
-    footer("CHUA DO CO2 / BUI / VOC",uiPage);
+    footer("DHT22 KHONG DO CO2 / BUI / VOC",uiPage);
   } else if (uiPage==2) {
     title("WI-FI / THINGSBOARD"); oled.setFont(u8g2_font_5x7_tf);
     scrollLine(23,WiFi.status()==WL_CONNECTED?"Wi-Fi: "+WiFi.SSID():"Wi-Fi: dang thu ket noi",24,now);
@@ -220,7 +252,17 @@ void controlsTick(uint32_t now) {
     Serial.printf("BOOT click: page %u/4\n",unsigned(uiPage+1));
   }
   remind=reminder.update(now,fresh(now)?feel:NAN,config.reminder,config.threshold);
-  bool led=remind ? ((now/200)%2==0) : portalActive() ? ((now/500)%2==0) : WiFi.status()==WL_CONNECTED ? true : (now%2000<100);
+  // GPIO25 is the human-visible thermal signal. The blue board LED remains technical.
+  bool led=false;
+  switch (currentBand()) {
+    case model::RoomBand::Comfortable: led=true; break; // steady: comfortable
+    case model::RoomBand::Warm: led=(now%500)<250; break; // quick, even blink
+    case model::RoomBand::Hot: led=(now%1400)<500; break; // slower cycle
+    case model::RoomBand::SevereHeat: led=(now%1800)<350; break; // off longer than on
+    case model::RoomBand::Humid: led=(now%1000)<180; break;
+    case model::RoomBand::Cool: led=(now%1600)<700; break;
+    default: led=(now%250)<100; break;
+  }
   digitalWrite(settings::LED_PIN,led);
   if (settings::BOARD_LED_ENABLED) {
     bool blue=false;
@@ -233,11 +275,13 @@ void controlsTick(uint32_t now) {
     else blue=(now%8000)<50; // Quiet heartbeat; not proof of cloud delivery.
     digitalWrite(settings::BOARD_LED_PIN,blue==settings::BOARD_LED_ACTIVE_HIGH?HIGH:LOW);
   }
-  if (buzzing && (!remind || !config.sound || model::elapsed(now,beepSince,150))) {
-    if (settings::PASSIVE_BUZZER) noTone(settings::BUZZER_PIN);
-    digitalWrite(settings::BUZZER_PIN,LOW); buzzing=false;
+  if (bootBeeping && model::elapsed(now,bootBeepSince,settings::BUZZER_BOOT_TEST_MS)) {
+    buzzerOff(); bootBeeping=false; Serial.println("BUZZER boot test: OFF");
   }
-  if (remind && config.sound && !buzzing && model::elapsed(now,lastBeep,300000)) {
+  if (buzzing && (!remind || !config.sound || model::elapsed(now,beepSince,150))) {
+    buzzerOff(); buzzing=false;
+  }
+  if (remind && config.sound && !buzzing && !bootBeeping && model::elapsed(now,lastBeep,300000)) {
     lastBeep=beepSince=now; buzzing=true;
     if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN,2200);
     else digitalWrite(settings::BUZZER_PIN,HIGH);
@@ -262,7 +306,8 @@ void serialTick(uint32_t now) {
               portalName().c_str(),portalPassword().c_str());
           } else Serial.println("SETUP failed: could not start AP");
         } else if (strcmp(command,"INFO")==0) statusSince=now-settings::SERIAL_STATUS_MS;
-        else Serial.println("Commands: INFO, SETUP (New Line)");
+        else if (strcmp(command,"BEEP")==0) { startBootBuzzer(now); Serial.println("BUZZER test requested"); }
+        else Serial.println("Commands: INFO, SETUP, BEEP (New Line)");
       }
       used=0; overflow=false;
     } else if (!overflow) {
@@ -278,8 +323,9 @@ void setup() {
     digitalWrite(settings::BOARD_LED_PIN,settings::BOARD_LED_ACTIVE_HIGH?LOW:HIGH);
     pinMode(settings::BOARD_LED_PIN,OUTPUT);
   }
+  digitalWrite(settings::LED_PIN,LOW); digitalWrite(settings::BUZZER_PIN,LOW);
   pinMode(settings::LED_PIN,OUTPUT); pinMode(settings::BUZZER_PIN,OUTPUT);
-  digitalWrite(settings::BUZZER_PIN,LOW); pinMode(settings::BUTTON_PIN,INPUT_PULLUP);
+  pinMode(settings::BUTTON_PIN,INPUT_PULLUP); startBootBuzzer(millis());
   dht.begin(); Wire.begin(settings::SDA_PIN,settings::SCL_PIN);
   Wire.setTimeOut(50);
   for (uint8_t addr : {uint8_t(0x3c),uint8_t(0x3d)}) {
@@ -309,8 +355,8 @@ void loop() {
   serialTick(now); controlsTick(now); networkTick(now); cloudTick(now); displayTick(now);
   if (model::elapsed(now,statusSince,settings::SERIAL_STATUS_MS)) {
     statusSince=now;
-    Serial.printf("STATUS up=%lus sensor=%s T=%.1f RH=%.1f HI=%.1f wifi=%s portal=%s page=%u button=%s cloud=%s wait>=%lus\n",
-      (unsigned long)(now/1000),fresh(now)?"OK":"INVALID",temperature,humidity,feel,
+    Serial.printf("STATUS up=%lus sensor=%s T=%.1f RH=%.1f HI=%.1f band=%s wifi=%s portal=%s page=%u button=%s cloud=%s wait>=%lus\n",
+      (unsigned long)(now/1000),fresh(now)?"OK":"INVALID",temperature,humidity,feel,bandLabel(currentBand()),
       WiFi.status()==WL_CONNECTED?"OK":"OFFLINE",portalActive()?"OPEN":"CLOSED",unsigned(uiPage+1),
       digitalRead(settings::BUTTON_PIN)==LOW?"DOWN":"UP",cloudState,(unsigned long)nextSendSeconds(now));
   }

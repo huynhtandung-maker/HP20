@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-09-14
+
+- GPIO25 trở thành đèn trạng thái nhiệt cảm nhận: dễ chịu sáng liên tục; bắt đầu nóng chớp đều; khó chịu chớp chậm; rất khó chịu sáng ngắn, tắt dài.
+- Thêm bíp khởi động 120 ms cho còi GPIO26 và lệnh Serial `BEEP` để kiểm tra; không phụ thuộc cảnh báo cloud.
+- OLED chuyển gợi ý theo trạng thái phòng làm việc: làm mát, thông gió khi không khí ngoài sạch, hút ẩm và các bước nghỉ ngơi phù hợp.
+- Nhãn là hướng dẫn vận hành HP20, không phải chẩn đoán y khoa; giữ nguyên giới hạn ThingsBoard và portal.
+
 ## 0.2.0 — 2026-09-14
 
 - Bốn trang OLED; BOOT có chống dội, đổi trang cả khi portal mở hoặc DHT22 lỗi.

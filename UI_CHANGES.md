@@ -1,4 +1,4 @@
-# HP20 v0.2.0 — giao diện và chẩn đoán
+# HP20 v0.3.0 — giao diện và chẩn đoán
 
 ## OLED 128×64
 
@@ -29,9 +29,9 @@ Nếu DHT22 chưa lắp, số đo INVALID/nan là dự kiến; không gửi số
 
 ## LED / còi
 
-LED rời GPIO25 giữ nguyên. LED bo GPIO2 active-high chỉ là cấu hình giả định,
-có thể tắt BOARD_LED_ENABLED nếu bo không có LED tương ứng.
-Còi tắt mặc định; khi bật, nhắc 150 ms tối đa một lần mỗi 5 phút khi vượt ngưỡng đủ 2 phút.
+GPIO25 là LED chỉ báo điều kiện phòng: **dễ chịu** sáng liên tục; **bắt đầu nóng** chớp đều nhanh; **khó chịu** chớp chậm; **rất khó chịu** sáng 350 ms, tắt 1450 ms. Ẩm cao, mát hoặc lỗi cảm biến có nhịp riêng để tránh hiểu nhầm là dễ chịu.
+
+Còi GPIO26 bíp 120 ms khi khởi động và in `BUZZER boot test: ON/OFF` trên Serial. Có thể nhập `BEEP` với New Line để thử lại. Còi nhắc định kỳ vẫn chỉ hoạt động khi người dùng đã bật nhắc và âm thanh trong portal. LED bo GPIO2 là chỉ báo kỹ thuật riêng.
 
 ## Nghiệm thu
 

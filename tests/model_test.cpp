@@ -10,6 +10,13 @@ int main() {
   assert(model::heatIndex(32,80)>model::heatIndex(32,60));
   assert(!model::validSample(NAN,50));
   assert(!model::validSample(25,-1));
+  using B=model::RoomBand;
+  assert(model::roomBand(26,65,NAN)==B::Comfortable);
+  assert(model::roomBand(28,76,NAN)==B::Humid);
+  assert(model::roomBand(30,65,34)==B::Warm);
+  assert(model::roomBand(32,70,40)==B::Hot);
+  assert(model::roomBand(35.9,61,48.3)==B::SevereHeat);
+  assert(model::roomBand(NAN,61,48)==B::Invalid);
   assert(model::elapsed(50,UINT32_MAX-49,100));
   assert(!model::elapsed(49,UINT32_MAX-49,100));
   model::Reminder r;
