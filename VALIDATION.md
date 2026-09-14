@@ -16,7 +16,15 @@ Host test: PASS, chạy bằng Zig 0.13.0 (C++11, -Wall -Wextra) trên Windows.
 tràn millis, thời gian chờ, mô phỏng 31 ngày reset mỗi giờ và reset mỗi 10 phút.
 Phép tính thời gian chờ được dùng trực tiếp để quyết định gửi trong firmware.
 Mô phỏng không thay cho thử mất điện/NVS hoặc HTTP 401/403/429 trên bo thật.
-Kết quả build ESP32 cuối được bổ sung bên dưới sau khi tiến trình kết thúc.
+ESP32 build: PASS (exit code 0), ESP32 Dev Module `esp32:esp32:esp32`, core 3.3.11,
+driver mặc định SH1106. Flash 1.135.036 / 1.310.720 byte (86%);
+RAM tĩnh 52.040 / 327.680 byte (15%), còn 275.640 byte.
+Thư viện: DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15,
+U8g2 2.36.19, ArduinoJson 7.4.3.
+Log: C:/Users/Admin/AppData/Local/Temp/HP20-v0.2.0-final-compile.log.
+Build dùng lại cache ngoài sketch tại C:/Users/Admin/AppData/Local/Temp/HP20-v0.1.1-build-20260913;
+tên cache cũ không phải phiên bản firmware; mã đã biên dịch là settings::VERSION 0.2.0.
+SSD1306 chưa biên dịch riêng tại máy trong lượt này; CI có bước kiểm tra cả hai driver.
 Build, log và công cụ kiểm thử đều ở thư mục Temp ngoài sketch.
 CI nhắm ESP32 core 3.3.11 và cả SH1106/SSD1306; chưa có lần chạy GitHub Actions.
 
