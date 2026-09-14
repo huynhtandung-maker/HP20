@@ -8,14 +8,13 @@ Version 0.2.0 ở settings.h được dùng chung cho Serial, trang thiết bị
 CHANGELOG.md giữ lịch sử. Workflow .github/workflows/build.yml đã chuẩn bị cho core 3.3.11,
 kiểm thử host và biên dịch SH1106/SSD1306. Chưa chạy CI trước khi push thành công.
 
-## Trạng thái quyền truy cập ngày 2026-09-14
+## Trạng thái đồng bộ ngày 2026-09-14
 
-API GitHub đọc được metadata nhưng ghi tệp trả 403 Resource not accessible by integration.
-Git Credential Manager trên máy chưa có đăng nhập sử dụng được ở chế độ không tương tác.
-Không có mã nào được đưa lên kho qua lần thử bị từ chối.
-Cần cấp quyền ghi cho kết nối GitHub hoặc đăng nhập Git trên máy trước khi push.
+Git Credential Manager đã được chủ dự án xác thực trên máy. Nhánh `main` và tag
+`v0.2.0` đã được push thành công lên `origin`; làm việc Local và GitHub đang cùng
+commit `2fea9f4`.
 
-Sau khi đăng nhập Git, tại thư mục HP20:
+Sau một thay đổi mới, tại thư mục HP20:
 
 ```powershell
 git -c safe.directory=E:/IOT/ARDUINO/Tu_Hoc/HP20 push -u origin main
