@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-09-14
+
+- Chốt thang HP20-VN Office v1 cho phòng làm việc Việt Nam; công khai điều kiện, câu báo và giới hạn cảm biến.
+- Hạ ngưỡng ẩm cao từ 75% xuống 70%; OLED ghi rõ `VN Office` để tránh hiểu nhầm là thang HI y khoa nước ngoài.
+
 ## 0.3.0 — 2026-09-14
 
 - GPIO25 trở thành đèn trạng thái nhiệt cảm nhận: dễ chịu sáng liên tục; bắt đầu nóng chớp đều; khó chịu chớp chậm; rất khó chịu sáng ngắn, tắt dài.

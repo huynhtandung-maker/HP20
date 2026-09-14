@@ -59,3 +59,10 @@ Hướng dẫn làm mát là gợi ý chung, không phải chẩn đoán theo m�
 Để hoàn thiện mục tiêu thang Việt Nam: chọn đối tượng/loại phòng và địa phương;
 thu thập vận tốc gió/nhiệt bức xạ nếu dùng mô hình yêu cầu các đại lượng đó;
 đối chiếu nghiên cứu đầy đủ và đánh giá chuyên môn trước khi phát hành các mức nguy cơ.
+
+
+## HP20-VN Office v1
+
+HP20 dùng thang hành động cho công việc bàn giấy trong phòng tại Việt Nam: 24–29°C/RH ≤70% là dải dễ chịu vận hành; RH >70% là ẩm cao; T >29°C hoặc HI ≥32°C là bắt đầu nóng; HI ≥39°C là khó chịu; HI ≥45°C là rất khó chịu. Các mốc HI chỉ dùng để ưu tiên hành động trong môi trường nóng ẩm, không dùng nhãn nguy cơ y khoa của quốc gia khác.
+
+Cơ sở: nghiên cứu về người Việt Nam ghi nhận hơn 90% người tham gia thấy 24–29°C nằm trong vùng hơi mát–trung tính–hơi ấm; nghiên cứu văn phòng Việt Nam nhấn mạnh nhiệt độ, độ ẩm và vận tốc gió cùng quyết định tiện nghi. HP20 không đo gió, bức xạ, trang phục, mức hoạt động hay chất ô nhiễm, vì vậy cần hiệu chỉnh theo phản hồi thực tế và không thay thế tư vấn y tế.

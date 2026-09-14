@@ -49,7 +49,9 @@ inline double heatIndex(double c, double rh) {
 inline bool validSample(float t, float rh) {
   return std::isfinite(t) && std::isfinite(rh) && t >= -40 && t <= 80 && rh >= 0 && rh <= 100;
 }
-// HP20 working-room action bands. Operational guidance, not a medical diagnosis.
+// HP20-VN Office v1: an operational scale for sedentary work in Vietnam.
+// It is not a medical diagnosis or a national legal standard: DHT22 cannot sense air speed,
+// radiant heat, clothing, activity, CO2, PM2.5 or VOC.
 enum class RoomBand { Invalid, Cool, Comfortable, Humid, Warm, Hot, SevereHeat };
 inline RoomBand roomBand(float t, float rh, double hi) {
   if (!validSample(t,rh)) return RoomBand::Invalid;
@@ -59,7 +61,7 @@ inline RoomBand roomBand(float t, float rh, double hi) {
     if (hi >= 32.0) return RoomBand::Warm;
   }
   if (t < 24.0) return RoomBand::Cool;
-  if (rh > 75.0) return RoomBand::Humid;
+  if (rh > 70.0) return RoomBand::Humid;
   if (t > 29.0) return RoomBand::Warm;
   return RoomBand::Comfortable;
 }

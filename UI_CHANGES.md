@@ -9,7 +9,20 @@
 
 Header 0–11 px, nội dung 16–51 px, footer từ 54 px; font 5×7 cho thông tin dài,
 font số lớn cho chỉ số chính. Các dòng dài cuộn trong vùng riêng, footer có số trang 1/4–4/4.
-Không dùng màu/nhãn an toàn để diễn giải một ngưỡng y tế chưa được kiểm chứng.
+## Thang HP20-VN Office v1
+
+Thang này dành cho người lớn làm việc bàn giấy trong phòng ở Việt Nam. Nó dùng nhiệt độ, độ ẩm và chỉ số cảm nhận HI để **chọn hành động**, không dùng thang cảnh báo sức khỏe của vùng ôn đới và không tự nhận là chuẩn y khoa hay quy chuẩn quốc gia.
+
+| Mức hiển thị | Điều kiện DHT22/HI | Câu báo và hành động |
+|---|---|---|
+| Dễ chịu | 24–29°C, RH ≤70%, HI <32°C | Duy trì điều kiện hiện tại. |
+| Ẩm cao | RH >70% khi chưa nóng | Thông gió khi không khí ngoài sạch; hút ẩm, kiểm tra mốc/đọng nước. |
+| Bắt đầu nóng | T >29°C hoặc HI 32–38.9°C | Bật quạt, tăng lưu thông khí, theo dõi mệt mỏi. |
+| Khó chịu | HI 39–44.9°C | Làm mát phòng, giảm tải nhiệt, nghỉ ngắn và uống nước theo nhu cầu. |
+| Rất khó chịu | HI ≥45°C | Làm mát ngay; nghỉ tại nơi mát. Nếu choáng/ngất, xử trí và gọi hỗ trợ y tế. |
+| Mát | T <24°C | Điều chỉnh luồng gió/trang phục theo cảm nhận. |
+
+Mốc dễ chịu 24–29°C phù hợp với nghiên cứu trên người Việt Nam; nghiên cứu văn phòng ở ba miền cũng cho thấy vùng thoải mái phụ thuộc đồng thời nhiệt độ, độ ẩm và vận tốc gió. HP20 cần được hiệu chỉnh bằng phản hồi người dùng sau khi triển khai thực tế. DHT22 không đo gió, bức xạ nhiệt, CO₂, bụi hay VOC, nên không được dùng để tuyên bố chất lượng không khí tổng thể hay chẩn đoán sức khỏe.
 
 Bấm ngắn BOOT đổi trang kể cả khi AP mở hoặc cảm biến lỗi. Giữ khoảng 3 giây mở AP.
 Trang AP giữ để nhập cấu hình; người dùng bấm ngắn có thể rời trang mà AP vẫn hoạt động.

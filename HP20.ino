@@ -110,7 +110,7 @@ void displayTick(uint32_t now) {
   }
   oled.clearBuffer();
   if (uiPage==0) {
-    title("CAM NHAN NONG / HI");
+    title("HP20-VN / CAM NHAN");
     oled.setFont(u8g2_font_logisoso24_tn);
     String value=fresh(now) && isfinite(feel)?String(feel,1):"--";
     int width=oled.getStrWidth(value.c_str()), x=(128-width-15)/2;
@@ -130,7 +130,7 @@ void displayTick(uint32_t now) {
       drawText(50,"Bam BOOT: xem ket noi");
     } else {
       model::RoomBand b=currentBand();
-      drawText(24,String("Trang thai: ")+bandLabel(b));
+      drawText(24,String("VN Office: ")+bandLabel(b));
       if (b==model::RoomBand::SevereHeat) {
         drawText(37,"Lam mat ngay: AC / quat"); scrollLine(50,"Nghi noi mat, uong nuoc; choang/ngat: goi 115",24,now);
       } else if (b==model::RoomBand::Hot) {
