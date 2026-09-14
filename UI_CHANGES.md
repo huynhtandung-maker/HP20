@@ -2,6 +2,17 @@
 
 ## OLED 128×64
 
+### Bố cục v0.3.2
+
+- **Tab 1 — Ngay:** tiêu đề trạng thái, chỉ số HI lớn là trọng tâm, T/RH là dữ liệu phụ.
+- **Tab 2 — Khuyến nghị real-time:** một dòng nhận định và một dòng hành động dài, mỗi dòng cuộn độc lập trong vùng cố định; không che chỉ số T/RH.
+- **Tab 3 — Môi trường:** tách số đo DHT22 và giới hạn chưa đo CO₂/PM/VOC.
+- **Tab 4 — Kết nối/cài đặt:** Wi-Fi, cloud và AP portal.
+
+Tab 1/3 ở 10 giây, Tab 2 ở 18 giây để đọc lời khuyên, Tab 4 ở 14 giây. Bấm ngắn BOOT đổi ngay tab; khi portal mở, Tab 4 giữ ưu tiên.
+
+## OLED 128×64
+
 1. Cảm nhận nóng HI: số lớn, T/RH bên dưới; ngoài miền hiện -- và lý do.
 2. Phòng / gợi ý: T/RH hoặc hành động khi vượt ngưỡng nhắc tự chọn.
 3. Wi-Fi / ThingsBoard: tên mạng, trạng thái gửi, chu kỳ và thời gian chờ tối thiểu.

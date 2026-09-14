@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 namespace settings {
-constexpr const char* VERSION = "0.3.1";
+constexpr const char* VERSION = "0.3.2";
 constexpr uint8_t DHT_PIN = 27, SDA_PIN = 21, SCL_PIN = 22;
 constexpr uint8_t LED_PIN = 25, BUZZER_PIN = 26, BUTTON_PIN = 0;
 // Onboard blue LED: GPIO2 is a provisional mapping, verify on your board.

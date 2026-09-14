@@ -98,71 +98,88 @@ void footer(const String& label, uint8_t page) {
 uint32_t nextSendSeconds(uint32_t now) {
   return model::remainingSeconds(now,sendMark,waitSeconds,(uint64_t)time(nullptr),notBefore);
 }
+uint32_t pageDuration(uint8_t page) {
+  // Advice stays visible longer because its text is deliberately read at a calm pace.
+  switch (page) {
+    case 1: return 18000;
+    case 3: return 14000;
+    default: return 10000;
+  }
+}
+const char* bandMessage(model::RoomBand b) {
+  switch (b) {
+    case model::RoomBand::SevereHeat: return "Nong am rat cao: de met, mat nuoc va giam tap trung.";
+    case model::RoomBand::Hot: return "Nong am: co the kho thoat nhiet khi ngoi lam viec lau.";
+    case model::RoomBand::Warm: return "Phong bat dau nong: nen giam tich nhiet som.";
+    case model::RoomBand::Humid: return "Do am cao: de bich, ngam va tang nguy co moc.";
+    case model::RoomBand::Cool: return "Phong mat: uu tien luong gio de tranh lanh cuc bo.";
+    case model::RoomBand::Comfortable: return "Dieu kien phu hop cho cong viec ban giay trong phong.";
+    default: return "Chua co so do tin cay tu DHT22.";
+  }
+}
+const char* bandAction(model::RoomBand b) {
+  switch (b) {
+    case model::RoomBand::SevereHeat: return "Bat dieu hoa/quat ngay; nghi noi mat, uong nuoc tung ngum. Chong mat: goi ho tro.";
+    case model::RoomBand::Hot: return "Lam mat phong, tranh viec gang suc; nghi ngan va uong nuoc theo nhu cau.";
+    case model::RoomBand::Warm: return "Bat quat, tang luu thong khi; theo doi met moi trong ca lam viec.";
+    case model::RoomBand::Humid: return "Thong gio khi khong khi ngoai sach; dung hut am neu co, kiem tra moc.";
+    case model::RoomBand::Cool: return "Chinh huong quat/AC va trang phuc theo cam nhan cua nguoi trong phong.";
+    case model::RoomBand::Comfortable: return "Duy tri muc hien tai; thong gio theo chat luong khong khi ngoai troi.";
+    default: return "Kiem tra DHT22, day du lieu va nguon cap cho cam bien.";
+  }
+}
 void displayTick(uint32_t now) {
   bool setupOpen=portalActive();
   if (setupOpen && !portalWasActive) { uiPage=3; uiPageSince=now; }
   portalWasActive=setupOpen;
   if (!displayOk || !model::elapsed(now,drawn,200)) return;
   drawn=now;
-  // Stay on setup instructions until a deliberate short press. Other pages rotate.
-  if (!(setupOpen && uiPage==3) && model::elapsed(now,uiPageSince,settings::UI_PAGE_MS)) {
+  if (!(setupOpen && uiPage==3) && model::elapsed(now,uiPageSince,pageDuration(uiPage))) {
     uiPage=(uiPage+1)%4; uiPageSince=now;
   }
+  model::RoomBand b=currentBand();
   oled.clearBuffer();
   if (uiPage==0) {
-    title("HP20-VN / CAM NHAN");
+    title("HP20-VN / NGAY");
+    oled.setFont(u8g2_font_5x7_tf);
+    drawText(20,String("TRANG THAI: ")+bandLabel(b));
     oled.setFont(u8g2_font_logisoso24_tn);
     String value=fresh(now) && isfinite(feel)?String(feel,1):"--";
     int width=oled.getStrWidth(value.c_str()), x=(128-width-15)/2;
-    oled.drawStr(x,40,value.c_str());
-    oled.setFont(u8g2_font_6x10_tf);
-    if (fresh(now) && isfinite(feel)) { oled.drawCircle(x+width+3,20,1); oled.drawStr(x+width+6,28,"C"); }
+    oled.drawStr(x,45,value.c_str());
     oled.setFont(u8g2_font_5x7_tf);
+    if (fresh(now) && isfinite(feel)) { oled.drawStr(x+width+3,34,"oC HI"); }
     if (fresh(now)) {
-      drawText(51,"T "+String(temperature,1)+" C");
-      oled.drawStr(72,51,("RH "+String(humidity,1)+"%").c_str());
-    } else drawText(51,"DHT22: CHO / LOI SO DO");
-    footer(!fresh(now)?"KIEM TRA CAM BIEN":!isfinite(feel)?"NGOAI MIEN UOC TINH HI":String(bandLabel(currentBand())),uiPage);
+      drawText(52,"T "+String(temperature,1)+" C");
+      oled.drawStr(74,52,("RH "+String(humidity,1)+"%").c_str());
+    } else drawText(52,"DHT22: CHO / LOI SO DO");
+    footer("CHI SO CHINH / BOOT DOI TAB",uiPage);
   } else if (uiPage==1) {
-    title("PHONG / GOI Y"); oled.setFont(u8g2_font_5x7_tf);
-    if (!fresh(now)) {
-      drawText(24,"Chua co so do hop le"); drawText(37,"Kiem tra DHT22 / day");
-      drawText(50,"Bam BOOT: xem ket noi");
-    } else {
-      model::RoomBand b=currentBand();
-      drawText(24,String("VN Office: ")+bandLabel(b));
-      if (b==model::RoomBand::SevereHeat) {
-        drawText(37,"Lam mat ngay: AC / quat"); scrollLine(50,"Nghi noi mat, uong nuoc; choang/ngat: goi 115",24,now);
-      } else if (b==model::RoomBand::Hot) {
-        drawText(37,"Tang lam mat, giam tai nhiet"); scrollLine(50,"Nghi ngan, uong nuoc theo nhu cau",24,now);
-      } else if (b==model::RoomBand::Warm) {
-        drawText(37,"Bat quat / tang luu thong khi"); scrollLine(50,"Theo doi met moi khi lam viec",24,now);
-      } else if (b==model::RoomBand::Humid) {
-        drawText(37,"Thong gio khi khong khi sach"); scrollLine(50,"Dung hut am neu co; kiem tra am moc",24,now);
-      } else if (b==model::RoomBand::Cool) {
-        drawText(37,"Theo doi luong gio / trang phuc"); drawText(50,"Duy tri thoai mai khi lam viec");
-      } else {
-        drawText(37,"Duy tri dieu kien hien tai"); drawText(50,"Thong gio theo chat luong ngoai troi");
-      }
-    }
-    footer("DHT22 KHONG DO CO2 / BUI / VOC",uiPage);
+    title("KHUYEN NGHI / REAL-TIME"); oled.setFont(u8g2_font_5x7_tf);
+    drawText(21,String("VN OFFICE: ")+bandLabel(b));
+    scrollLine(33,String("NHAN DINH: ")+bandMessage(b),24,now);
+    scrollLine(45,String("HANH DONG: ")+bandAction(b),24,now+900);
+    drawText(52,fresh(now)?"T "+String(temperature,1)+"C  RH "+String(humidity,0)+"%":"DHT22 CAN KIEM TRA");
+    footer("DOC 18s / BOOT DOI TAB",uiPage);
   } else if (uiPage==2) {
-    title("WI-FI / THINGSBOARD"); oled.setFont(u8g2_font_5x7_tf);
-    scrollLine(23,WiFi.status()==WL_CONNECTED?"Wi-Fi: "+WiFi.SSID():"Wi-Fi: dang thu ket noi",24,now);
-    scrollLine(34,String(cloudState),24,now);
-    drawText(45,"Chu ky "+String(config.intervalSeconds/60)+" phut");
-    footer(inFlight?"DANG GUI HTTPS":WiFi.status()!=WL_CONNECTED?"GIU BOOT 3s: DOI WI-FI":
-      "Cho toi thieu "+String(nextSendSeconds(now))+"s / con tuy dieu kien",uiPage);
+    title("MOI TRUONG / SO DO"); oled.setFont(u8g2_font_6x10_tf);
+    if (fresh(now)) {
+      drawText(25,"NHET: "+String(temperature,1)+" C");
+      drawText(38,"DO AM: "+String(humidity,1)+" %");
+      drawText(51,isfinite(feel)?"CAM NHAN HI: "+String(feel,1)+" C":"HI: NGOAI MIEN UOC TINH");
+    } else { drawText(29,"DHT22 CHUA CO SO DO"); drawText(43,"KIEM TRA DAY / NGUON"); }
+    footer("DHT22: CHUA DO CO2 / PM / VOC",uiPage);
   } else {
-    title(setupOpen?"CAI DAT WI-FI":"THIET BI / CAI DAT"); oled.setFont(u8g2_font_5x7_tf);
+    title(setupOpen?"CAI DAT WI-FI":"KET NOI / CAI DAT"); oled.setFont(u8g2_font_5x7_tf);
     if (setupOpen) {
       drawText(23,"AP: "+portalName()); drawText(34,"PW: "+portalPassword());
       drawText(45,"Mo 192.168.4.1");
-      footer("BAM BOOT: SO DO / AP VAN MO",uiPage);
+      footer("BOOT DOI TAB / AP VAN MO",uiPage);
     } else {
-      drawText(23,"HP20 / v"+String(settings::VERSION));
-      scrollLine(34,WiFi.status()==WL_CONNECTED?"IP: "+WiFi.localIP().toString():"Chua ket noi Wi-Fi",24,now);
-      drawText(45,"Giu BOOT 3s: cai dat"); footer("WI-FI / TOKEN QUA PHONE",uiPage);
+      scrollLine(23,WiFi.status()==WL_CONNECTED?"WI-FI: "+WiFi.SSID():"WI-FI: DANG THU KET NOI",24,now);
+      scrollLine(34,String(cloudState),24,now);
+      drawText(45,"GUI TOI THIEU "+String(config.intervalSeconds/60)+" PHUT");
+      footer("GIU BOOT 3s: DOI WI-FI",uiPage);
     }
   }
   oled.sendBuffer();

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-09-14
+
+- Thiết kế lại OLED theo bốn tab: chỉ số chính, khuyến nghị thời gian thực, số đo môi trường, kết nối/cài đặt.
+- Khuyến nghị dùng hai dòng cuộn độc lập, có nhận định và hành động theo HP20-VN Office; giữ 18 giây để đọc.
+- Chia thời lượng tab: chỉ số/số đo 10 giây, khuyến nghị 18 giây, kết nối 14 giây; BOOT vẫn đổi ngay.
+
 ## 0.3.1 — 2026-09-14
 
 - Chốt thang HP20-VN Office v1 cho phòng làm việc Việt Nam; công khai điều kiện, câu báo và giới hạn cảm biến.
