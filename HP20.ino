@@ -52,6 +52,13 @@ bool ignoreOldResult = false;
 bool buzzing = false;
 bool bootBeeping = false;
 
+enum class SetupFeedback : uint8_t { Idle, Connecting, Connected, Failed };
+SetupFeedback setupFeedback = SetupFeedback::Idle;
+uint32_t setupFeedbackSince = 0;
+uint32_t setupBeepMark = 0;
+uint8_t setupBeepsRemaining = 0;
+bool setupBeepOn = false;
+
 uint32_t wifiAttempt = 0;
 uint32_t offlineSince = 0;
 uint32_t connectedSince = 0;
@@ -59,7 +66,7 @@ uint32_t beepSince = 0;
 uint32_t lastBeep = 0;
 uint32_t bootBeepSince = 0;
 uint32_t sendMark = 0;
-uint32_t waitSeconds = 900;
+uint32_t waitSeconds = 300;
 uint32_t statusSince = 0;
 uint32_t ntpRetrySince = 0;
 uint64_t notBefore = 0;
@@ -81,13 +88,56 @@ void buzzerOff() {
   digitalWrite(settings::BUZZER_PIN, LOW);
 }
 
+void buzzerOn(uint16_t frequency = 2200) {
+  if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN, frequency);
+  else digitalWrite(settings::BUZZER_PIN, HIGH);
+}
+
+void queueSetupBeeps(uint8_t count, uint32_t now) {
+  if (!count || bootBeeping) return;
+  if (buzzing) {
+    buzzerOff();
+    buzzing = false;
+  }
+  setupBeepsRemaining = count;
+  setupBeepOn = true;
+  setupBeepMark = now;
+  buzzerOn(2350);
+}
+
+void setSetupFeedback(SetupFeedback state, uint32_t now) {
+  if (setupFeedback == state) return;
+  setupFeedback = state;
+  setupFeedbackSince = now;
+
+  if (state == SetupFeedback::Connecting) queueSetupBeeps(1, now);
+  else if (state == SetupFeedback::Connected) queueSetupBeeps(2, now);
+  else if (state == SetupFeedback::Failed) queueSetupBeeps(3, now);
+}
+
+void serviceSetupBeeps(uint32_t now) {
+  if (bootBeeping || setupBeepsRemaining == 0) return;
+
+  if (setupBeepOn) {
+    if (model::elapsed(now, setupBeepMark, 95)) {
+      buzzerOff();
+      setupBeepOn = false;
+      setupBeepMark = now;
+      if (setupBeepsRemaining) --setupBeepsRemaining;
+    }
+  } else if (setupBeepsRemaining && model::elapsed(now, setupBeepMark, 110)) {
+    setupBeepOn = true;
+    setupBeepMark = now;
+    buzzerOn(2350);
+  }
+}
+
 void startBootBuzzer(uint32_t now) {
   if (!settings::BUZZER_BOOT_TEST || bootBeeping) return;
   bootBeeping = true;
   bootBeepSince = now;
   lastBeep = now;
-  if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN, 2200);
-  else digitalWrite(settings::BUZZER_PIN, HIGH);
+  buzzerOn(2200);
   Serial.println("BUZZER boot test: ON");
 }
 
@@ -111,6 +161,10 @@ void networkTick(uint32_t now) {
   if (connected && !wasConnected) {
     connectedSince = now;
     autoPortal = false;
+    if (setupFeedback == SetupFeedback::Connecting || setupFeedback == SetupFeedback::Failed) {
+      setSetupFeedback(SetupFeedback::Connected, now);
+      Serial.println("SETUP feedback: Wi-Fi connected");
+    }
     configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
     ntpRetrySince = now;
     Serial.println("TIME sync requested (NTP)");
@@ -124,15 +178,16 @@ void networkTick(uint32_t now) {
     connectWifi();
   }
 
-  if (!connected && !autoPortal && model::elapsed(now, offlineSince, 120000)) {
-    portalBegin(&config);
-    autoPortal = true;
-  }
+  // Security/UX rule: an open setup AP is never exposed automatically after
+  // ordinary Wi-Fi loss. First boot with no credentials and physical BOOT hold
+  // are the only automatic/user-authorized ways to open the portal.
 
   static bool closeOnConnect = false;
   portalTick();
 
   if (portalSaved()) {
+    setSetupFeedback(SetupFeedback::Connecting, now);
+    Serial.println("SETUP feedback: saved, connecting Wi-Fi");
     ignoreOldResult = inFlight;
     authBlocked = false;
     if (runtime.putBool("auth", false) != sizeof(bool)) {
@@ -172,6 +227,20 @@ void networkTick(uint32_t now) {
       model::elapsed(now, connectedSince, 30000)) {
     portalClose();
     closeOnConnect = false;
+  }
+
+  if (setupFeedback == SetupFeedback::Connecting && !connected &&
+      model::elapsed(now, setupFeedbackSince, 20000)) {
+    setSetupFeedback(SetupFeedback::Failed, now);
+    Serial.println("SETUP feedback: Wi-Fi not connected yet");
+  }
+  if (setupFeedback == SetupFeedback::Connected &&
+      model::elapsed(now, setupFeedbackSince, 2600)) {
+    setupFeedback = SetupFeedback::Idle;
+  }
+  if (setupFeedback == SetupFeedback::Failed &&
+      model::elapsed(now, setupFeedbackSince, 30000)) {
+    setupFeedback = SetupFeedback::Idle;
   }
 }
 
@@ -325,6 +394,12 @@ void controlsTick(uint32_t now) {
     if (now < 800) {
       blue = (now % 400) < 80;
     }
+    else if (setupFeedback == SetupFeedback::Connecting) blue = (now % 400) < 200;
+    else if (setupFeedback == SetupFeedback::Connected) blue = true;
+    else if (setupFeedback == SetupFeedback::Failed) {
+      const uint32_t p = now % 1500;
+      blue = p < 100 || (p >= 220 && p < 320) || (p >= 440 && p < 540);
+    }
     else if (!hp20::sensor::fresh(now)) {
       const uint32_t p = now % 3000;
       blue = p < 80 || (p >= 200 && p < 280) || (p >= 400 && p < 480);
@@ -351,18 +426,20 @@ void controlsTick(uint32_t now) {
     Serial.println("BUZZER boot test: OFF");
   }
 
+  serviceSetupBeeps(now);
+
   if (buzzing && (!remind || !config.sound || model::elapsed(now, beepSince, 150))) {
     buzzerOff();
     buzzing = false;
   }
 
   if (remind && config.sound && !buzzing && !bootBeeping &&
+      setupBeepsRemaining == 0 && !setupBeepOn &&
       model::elapsed(now, lastBeep, 300000)) {
     lastBeep = beepSince = now;
     buzzing = true;
 
-    if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN, 2200);
-    else digitalWrite(settings::BUZZER_PIN, HIGH);
+    buzzerOn(2200);
   }
 }
 
@@ -387,9 +464,8 @@ void serialTick(uint32_t now) {
 
           if (portalActive()) {
             Serial.printf(
-              "SETUP AP=%s TEMP_PASSWORD=%s URL=http://192.168.4.1\n",
-              portalName().c_str(),
-              portalPassword().c_str()
+              "SETUP AP=%s OPEN URL=http://192.168.4.1\n",
+              portalName().c_str()
             );
           } else {
             Serial.println("SETUP failed: could not start AP");

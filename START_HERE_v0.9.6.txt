@@ -1,0 +1,47 @@
+HP20 v0.9.6 — UX ONBOARDING + OTA RELEASE CANDIDATE
+====================================================
+
+MUC TIEU
+- Mot goi source duy nhat, khong sua tung file le.
+- Wi-Fi cai dat HP20 KHONG can mat khau rieng.
+- BOOT ~3 giay -> phone chon HP20-xxxxxx -> captive portal.
+- Portal uu tien danh sach Wi-Fi 2.4 GHz theo cuong do tin hieu.
+- Nguoi dung binh thuong chi can chon Wi-Fi + nhap mat khau + Luu.
+- ThingsBoard / token / CA TLS / OTA nam trong "Cai dat nang cao".
+- Sau Luu: web hien trang thai, LED xanh duong + buzzer phan hoi.
+- Chu ky telemetry chuan: 5 phut.
+- OTA: mac dinh TAT, khi bat co the kiem tra 15 phut..24 gio.
+
+BAT DAU
+1. Mo HP20.ino trong Arduino IDE 2.x.
+2. Board: ESP32 Dev Module.
+3. Verify truoc. Upload chi khi Verify PASS.
+4. Neu ESP32 da co Wi-Fi/token trong NVS: khong can secrets.h.
+5. Neu developer muon seed credential local: copy secrets.example.h -> secrets.h,
+   dien gia tri that; secrets.h bi .gitignore chan va KHONG nam trong ZIP nay.
+
+ONBOARDING CHUAN
+- Lan dau chua co Wi-Fi: HP20 tu mo AP cai dat toi da 10 phut.
+- Doi Wi-Fi: giu BOOT ~3 giay.
+- Ket noi phone vao HP20-xxxxxx (khong password).
+- Portal co the tu mo; neu khong, mo http://192.168.4.1.
+- Chon Wi-Fi 2.4 GHz, nhap password, bam Luu & ket noi.
+- Mat dien/reboot: HP20 dung lai NVS, khong hoi lai.
+- Neu Wi-Fi thuong mat ket noi, HP20 KHONG tu mo AP cong khai; no tu reconnect.
+
+TIN HIEU KHI LUU
+- 1 beep + LED xanh duong nhay nhanh: dang ket noi.
+- 2 beep + LED sang lien tuc ngan: Wi-Fi thanh cong.
+- 3 beep + mau nhay 3 xung: chua ket noi duoc; portal van mo de sua.
+
+OTA (OVER-THE-AIR = CAP NHAT FIRMWARE QUA MANG)
+- Bat trong Cai dat nang cao cua portal.
+- ThingsBoard package Title = HP20.
+- Version package phai MOI HON firmware dang chay.
+- Firmware kiem SHA-256 truoc khi kich hoat ban moi.
+- Xem OTA.md truoc khi thu OTA that.
+
+VERSION
+- Firmware: 0.9.6
+- Git tag du kien sau khi kiem thu: v0.9.6
+- Chua tag/release truoc khi Verify + test board + test ThingsBoard OTA PASS.

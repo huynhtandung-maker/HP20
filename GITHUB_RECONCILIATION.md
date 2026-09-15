@@ -1,18 +1,17 @@
-# GitHub Reconciliation · v0.9.4
+# GitHub Reconciliation · HP20 v0.9.6
 
-GitHub `main` hiện là lịch sử cũ; không rewrite history và không force-push.
+Current release-candidate ZIP is **not automatically a GitHub release**.
 
-## Chiến lược
+Recommended sequence after local board validation:
 
-1. Tạo branch mới từ `main`.
-2. Đưa toàn bộ baseline v0.9.4 vào branch.
-3. GitHub Actions chạy compile/test.
-4. Review Pull Request thủ công.
-5. Chỉ merge khi ESP32 local đã Verify/Upload/test thật.
-6. Sau merge mới tạo tag `v0.9.4` và GitHub Release.
+1. `git checkout main && git pull origin main`
+2. create a new branch from current `main`;
+3. copy/sync this v0.9.6 source into the branch;
+4. confirm `secrets.h` is absent/untracked;
+5. commit + push branch;
+6. open Pull Request;
+7. wait for GitHub Actions (host tests + SH1106 + SSD1306) PASS;
+8. merge only after physical ESP32 tests PASS;
+9. then create tag `v0.9.6` and GitHub Release.
 
-## File legacy trên GitHub
-
-Các file cũ có thể được thay nội dung bằng baseline mới. Không xóa lịch sử commit cũ chỉ vì code đã tiến hóa.
-
-Nếu phát hiện secret thật từng được commit, rotate secret trước; việc xóa file ở HEAD không loại secret khỏi Git history.
+Do not force-push or rewrite repository history. If a real secret ever appeared in public history, rotate it first; deleting it only from HEAD is not sufficient.

@@ -43,7 +43,7 @@ bool seedFromLocalSecrets(Config& config) {
 
   config.otaEnabled = hp20_local::OTA_ENABLED;
   config.otaCheckSeconds = constrain(
-    uint32_t(hp20_local::OTA_CHECK_SECONDS), 3600U, 86400U
+    uint32_t(hp20_local::OTA_CHECK_SECONDS), 900U, 86400U
   );
 
   const uint32_t oldRevision = config.localProfileRevision;

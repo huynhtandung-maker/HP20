@@ -17,5 +17,5 @@ constexpr uint32_t BUZZER_BOOT_TEST_MS = 120;
 
 constexpr uint32_t SAMPLE_MS = 2500, STALE_MS = 10000;
 constexpr uint32_t PORTAL_TIMEOUT_MS = 600000, WIFI_RETRY_MS = 30000;
-constexpr uint32_t MIN_SEND_SECONDS = 900; // 96 attempts/day at most; no catch-up
+constexpr uint32_t MIN_SEND_SECONDS = 300; // HP20 standard: 5 minutes; no catch-up
 }

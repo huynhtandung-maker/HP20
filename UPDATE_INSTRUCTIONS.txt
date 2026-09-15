@@ -1,25 +1,18 @@
-HP20 v0.9.5 PROVISIONING UX + OTA
-=================================
+HP20 v0.9.6 - ONE-PACKAGE UPDATE
+================================
 
-LOCAL FIRST BOOT
-1. Copy secrets.example.h -> secrets.h.
-2. Điền WIFI_SSID / WIFI_PASSWORD / TB_TOKEN / TB_CA_PEM trực tiếp trên máy.
-3. PROFILE_REVISION=1 cho lần áp local đầu tiên; tăng 2,3,... chỉ khi muốn local profile ghi đè NVS đúng một lần.
-4. secrets.h đã bị .gitignore chặn; KHÔNG git add -f file này.
-5. Arduino IDE: Verify -> Upload.
-6. Boot: revision local mới hơn revision đã lưu -> apply một lần vào NVS và tự kết nối.
-
-MOVE / CHANGE WI-FI
-- Giữ BOOT ~3 giây -> mở portal.
-- Portal lưu mạng mới vào NVS.
-- NVS có ưu tiên cao hơn secrets.h, nên reboot/mất điện tiếp tục dùng mạng mới.
-
-OTA
-- Mặc định OFF. Bật qua portal Advanced hoặc secrets.h.
-- ThingsBoard OTA package title phải là HP20.
-- Version package phải lớn hơn firmware hiện tại.
-- Chọn SHA-256.
-- Serial command OTA = kiểm tra ngay.
-
-VERSION
-- Chỉ sửa hp20_version.h.
+1) Sao luu folder HP20 hien tai neu can.
+2) Giai nen ZIP v0.9.6 vao folder rieng.
+3) ZIP KHONG chua secrets.h that.
+   - Neu board da co NVS Wi-Fi/token: khong can secrets.h.
+   - Neu muon seed local: copy secrets.example.h -> secrets.h va dien local.
+4) Arduino IDE -> mo HP20.ino -> Verify.
+5) Chi Upload khi Verify PASS.
+6) Sau upload:
+   - BOOT ~3s -> phone chon HP20-xxxxxx (khong password)
+   - portal -> chon Wi-Fi 2.4GHz -> password -> Luu
+   - kiem tra feedback web + LED/buzzer
+   - kiem tra ThingsBoard Active/telemetry
+7) Telemetry chuan = 5 phut.
+8) OTA mac dinh OFF. Chi bat sau khi telemetry on dinh.
+9) Chua tao Git tag/release cho toi khi board + CI + OTA gate PASS.

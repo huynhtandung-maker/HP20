@@ -1,8 +1,9 @@
-HP20 v0.9.5 FILE MANIFEST
+HP20 v0.9.6 FILE MANIFEST
 ==========================
 .env.example
-.gitignore
+.gitattributes
 .github/workflows/build.yml
+.gitignore
 ARCHITECTURE.md
 CALIBRATION.md
 CHANGELOG.md
@@ -14,9 +15,11 @@ README.md
 RELEASE.md
 SCIENCE.md
 SECURITY.md
+START_HERE_v0.9.6.txt
 TESTING.md
 THINGSBOARD_BUDGET.md
 UPDATE_INSTRUCTIONS.txt
+V096_NOTES.txt
 VALIDATION.md
 cloud.cpp
 cloud.h
@@ -43,3 +46,4 @@ portal.h
 secrets.example.h
 settings.h
 tests/model_test.cpp
+thingsboard_ca.h

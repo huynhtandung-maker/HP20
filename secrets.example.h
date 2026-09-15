@@ -29,6 +29,6 @@ constexpr const char* TB_CA_PEM = R"PEM(
 
 // Remote ThingsBoard OTA is opt-in.
 constexpr bool OTA_ENABLED = false;
-constexpr uint32_t OTA_CHECK_SECONDS = 21600; // 6 hours
+constexpr uint32_t OTA_CHECK_SECONDS = 3600; // 1 hour
 
 } // namespace hp20_local

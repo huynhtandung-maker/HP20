@@ -6,4 +6,3 @@ bool portalSaved();
 void portalTick();
 void portalClose();
 String portalName();
-String portalPassword();

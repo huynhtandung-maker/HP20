@@ -453,7 +453,7 @@ void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, cons
 
     if (setupOpen) {
       scrollLine(25, String("AP: ") + portalName(), 24, now);
-      drawText(39, clipped(String("PW: ") + portalPassword(), 24));
+      drawText(39, "KHONG CAN MAT KHAU");
       drawText(52, "WEB: 192.168.4.1");
     } else {
       scrollLine(25,

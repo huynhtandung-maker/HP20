@@ -1,45 +1,44 @@
-# HP20 OTA · ThingsBoard HTTPS
+# HP20 OTA · ThingsBoard HTTPS · v0.9.6
 
-## Mục tiêu
+`OTA` = **Over-The-Air**: cập nhật firmware từ xa qua Wi-Fi, không cần cắm USB.
 
-HP20 v0.9.5 hỗ trợ OTA từ xa qua ThingsBoard nhưng **mặc định tắt**. OTA dùng cùng host/token/CA TLS với telemetry và không yêu cầu GitHub token trên thiết bị.
+## Trạng thái mặc định
 
-## Device flow
+- OTA: **TẮT** cho tới khi owner bật trong `Portal → Cài đặt nâng cao`.
+- Chu kỳ kiểm tra: 15 phút → 24 giờ; cấu hình mới mặc định 1 giờ.
+- Lệnh Serial `OTA` yêu cầu kiểm tra ngay, nhưng OTA vẫn phải được bật và đủ Wi-Fi/token/TLS.
+
+## Luồng thiết bị
 
 ```text
-Wi-Fi + TLS ready
-  ↓
-POST current_fw_title/current_fw_version
-  ↓
-GET shared attrs fw_title/fw_version/fw_checksum/fw_checksum_algorithm/fw_size
-  ↓
-validate title=HP20 + newer version + SHA256 + size
-  ↓
-GET /api/v1/<token>/firmware?title=HP20&version=<target>
-  ↓
-write inactive OTA partition + stream SHA-256
-  ↓
-checksum match → Update.end() → reboot
+Wi-Fi + TLS + ThingsBoard ready
+→ báo current_fw_title/current_fw_version
+→ đọc fw_title/fw_version/fw_checksum/fw_checksum_algorithm/fw_size
+→ title=HP20 + version mới hơn + SHA256 + size hợp lệ?
+→ tải firmware HTTPS
+→ ghi OTA partition + tính SHA-256 song song
+→ checksum khớp
+→ Update.end()
+→ reboot
 ```
 
-## ThingsBoard setup
+## Test OTA sau khi v0.9.6 đã ổn định
 
-1. Flash v0.9.5 bằng USB trước.
-2. Bật OTA trong portal hoặc local `secrets.h`.
-3. Khi muốn thử OTA, build **v0.9.6**. Không thể kiểm OTA bằng package cùng version v0.9.5.
-4. ThingsBoard → Advanced features → OTA updates → Add package.
-5. Title: `HP20`; Version: `0.9.6`; Type: Firmware; checksum SHA-256; upload binary đúng panel SH1106/SSD1306.
-6. Assign package cho riêng device HP20 trước khi cân nhắc profile/fleet.
-7. Theo dõi `fw_state`: DOWNLOADING → DOWNLOADED → VERIFIED → UPDATING → UPDATED.
+Không thể chứng minh OTA bằng package **cùng version**. Cách test đúng:
+
+1. Flash/upload v0.9.6 bằng USB và xác nhận ThingsBoard telemetry ổn định.
+2. Trong Portal → Advanced, bật OTA và lưu.
+3. Tạo một bản test tiếp theo, ví dụ `0.9.7` (chỉ sau khi chủ dự án đồng ý).
+4. GitHub Actions build binary SH1106/SSD1306 đúng phần cứng.
+5. ThingsBoard → Advanced features → OTA updates → Add package.
+6. Title: `HP20`; Version: `0.9.7`; Type: Firmware; chọn đúng binary.
+7. Gán package cho riêng device HP20 trước, chưa rollout cả fleet.
+8. Theo dõi `fw_state`: DOWNLOADING → DOWNLOADED → VERIFIED → UPDATING → UPDATED.
 
 ## Safety gates
 
-- HTTPS + CA required; không insecure TLS.
-- OTA chỉ chạy khi portal đóng và cloud không có request đang xử lý.
-- Giới hạn binary 4 MiB ở firmware HP20.
-- Sai title/version/SHA-256/size → từ chối.
-- Telemetry nhường đường khi OTA đang chạy.
-
-## Serial
-
-`OTA` + New Line: yêu cầu kiểm tra ngay.
+- HTTPS + CA bắt buộc.
+- Portal phải đóng trước khi OTA chạy.
+- Telemetry nhường đường khi OTA busy.
+- Max firmware 4 MiB.
+- Sai title/version/checksum/size → từ chối.

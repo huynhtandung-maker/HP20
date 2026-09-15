@@ -10,14 +10,14 @@ struct Config {
   String ca;
 
   // Telemetry / reminder
-  uint32_t intervalSeconds = 900;
+  uint32_t intervalSeconds = 300;
   bool reminder = false;
   bool sound = false;
   float threshold = 35; // Inactive until explicitly enabled by the user.
 
   // OTA policy. Remote OTA is OFF until the user/developer enables it.
   bool otaEnabled = false;
-  uint32_t otaCheckSeconds = 21600; // 6 h; polling is intentionally infrequent.
+  uint32_t otaCheckSeconds = 3600; // 1 h default; user may choose 15 min..24 h.
 
   // Developer-local provisioning profile revision already applied to NVS.
   // Portal/NVS wins until secrets.h intentionally increments PROFILE_REVISION.

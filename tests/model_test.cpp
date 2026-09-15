@@ -3,6 +3,7 @@
 #include "../hp20_trend.h"
 #include "../hp20_indicator.h"
 #include "../hp20_version.h"
+#include "../settings.h"
 
 #include <cassert>
 #include <cmath>
@@ -43,7 +44,8 @@ int main() {
 
   // Firmware identity is centralized in hp20_version.h.
   static_assert(hp20::version::MAJOR == 0, "Unexpected major version");
-  assert(std::string(hp20::version::STRING) == "0.9.5");
+  static_assert(settings::MIN_SEND_SECONDS == 300, "HP20 standard telemetry must be 5 minutes");
+  assert(std::string(hp20::version::STRING) == "0.9.6");
 
   // Green LED semantics: Comfort is solid green; hotter bands progressively
   // reduce green presence. This is a comfort signal, not an alarm strobe.
@@ -173,5 +175,5 @@ int main() {
   }
   assert(model::remainingSeconds(900000, 0, 900, epoch - 3600, epoch + 900) == 4500);
 
-  std::cout << "HP20 v0.9.5 core/thermal/indicator/trend/button/cooldown tests passed\n";
+  std::cout << "HP20 v0.9.6 core/thermal/indicator/trend/button/cooldown tests passed\n";
 }

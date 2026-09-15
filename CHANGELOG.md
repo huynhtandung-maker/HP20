@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.6 — Onboarding UX + 5-minute cadence + setup feedback
+
+- Bỏ mật khẩu tạm của AP HP20; physical BOOT hold + timeout trở thành gate onboarding.
+- Không tự mở open AP khi Wi-Fi chỉ bị rớt; firmware tự reconnect, portal chỉ first-boot/BOOT/Serial SETUP.
+- Portal chuyển từ wizard kỹ thuật 3 bước sang Wi-Fi-first UX: danh sách mạng, RSSI dễ hiểu, chọn mạng + password + Save.
+- ThingsBoard token/host/CA/telemetry/OTA được dồn xuống Advanced.
+- Sau Save có web progress `/status` thay vì đứng im; board LED + buzzer phát tín hiệu connecting/success/failure.
+- Telemetry chuẩn/minimum đổi 15 phút → 5 phút; config legacy 15 phút được migration một lần.
+- OTA toggle giữ opt-in; chu kỳ kiểm tra hỗ trợ 15 phút..24 giờ, cấu hình mới mặc định 1 giờ.
+- OLED/Serial không còn hiển thị password của setup AP.
+- `secrets.h` thật không nằm trong release ZIP.
+
 ## v0.9.5 FIX2 — Built-in ThingsBoard Cloud CA
 
 - Bundled ISRG Root X1 for `thingsboard.cloud`; no PEM paste required for normal onboarding.

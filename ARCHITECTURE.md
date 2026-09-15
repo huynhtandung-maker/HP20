@@ -1,72 +1,72 @@
-# HP20 Architecture · v0.9.5
+# HP20 Architecture · v0.9.6
 
 ## Nguyên tắc
 
-HP20 dùng **single responsibility + single source of truth**. Một loại logic chỉ được sở hữu bởi một module.
+HP20 dùng **single responsibility + single source of truth**: mỗi loại logic có một chủ sở hữu rõ ràng.
 
-| Thành phần | Trách nhiệm | Không được chứa |
-|---|---|---|
-| `hp20_sensor.*` | DHT22 raw, validation, calibration | FEEL bands, UI, cloud |
-| `model.h` | công thức Heat Index nền, Button, Reminder, retry helpers | UI text, local bands |
-| `hp20_thermal.*` | FEEL state, local bands, meaning/action, target range | OLED drawing, Wi‑Fi |
-| `hp20_indicator.*` | pattern LED xanh theo thermal band | tự tính band/FEEL |
-| `hp20_trend.*` | lịch sử và xu hướng FEEL | lời khuyên thermal |
-| `hp20_ui.*` | OLED layout/chart/marquee | threshold thermal |
-| `config.*` | persistent config/NVS | portal rendering |
-| `hp20_provisioning.*` | NVS → local secrets → portal fallback | thermal/UI logic |
-| `portal.*` | onboarding 3 bước qua AP | hard-code secret vào repo |
-| `cloud.*` | HTTPS/ThingsBoard telemetry transport | thermal classification |
-| `hp20_ota.*` | OTA check/download/verify/apply | FEEL/UI threshold |
-| `HP20.ino` | orchestrator | threshold, calibration, OLED drawing |
-| `hp20_version.h` | firmware identity | GPIO/runtime settings |
-| `settings.h` | GPIO, timing, hardware config | firmware version, secrets |
+| Thành phần | Trách nhiệm chính |
+|---|---|
+| `hp20_sensor.*` | DHT22 raw, validation, calibration |
+| `model.h` | Heat Index nền, Button, Reminder, retry helper |
+| `hp20_thermal.*` | FEEL, band, meaning/action |
+| `hp20_indicator.*` | pattern LED xanh theo thermal band |
+| `hp20_trend.*` | lịch sử và xu hướng FEEL |
+| `hp20_ui.*` | OLED presentation |
+| `config.*` | cấu hình persistent trong NVS |
+| `hp20_provisioning.*` | seed local profile có revision |
+| `portal.*` | AP/captive portal + UX onboarding |
+| `cloud.*` | HTTPS telemetry transport |
+| `hp20_ota.*` | OTA check/download/SHA-256/apply |
+| `HP20.ino` | orchestrator + network/control feedback |
+| `hp20_version.h` | firmware identity duy nhất |
+| `settings.h` | GPIO/timing/hardware constants |
 
 ## Luồng dữ liệu
 
 ```text
 DHT22 RAW
   ↓
-hp20_sensor
-  ↓ calibrated T/RH
-hp20_thermal
-  ↓ FEEL raw + FEEL UI + Band
-  ├→ hp20_indicator → green LED
-  ├→ hp20_trend     → trend
-  ├→ hp20_ui        → OLED
+hp20_sensor → calibrated T/RH
+  ↓
+hp20_thermal → FEEL + Band
+  ├→ hp20_indicator → green comfort LED
+  ├→ hp20_trend → trend
+  ├→ hp20_ui → OLED
   ├→ reminder/buzzer
-  └→ cloud telemetry
+  └→ cloud → ThingsBoard
 ```
 
-## Version độc lập
-
-- Firmware: `hp20_version.h`
-- Thermal interpretation model: `hp20_thermal.h::MODEL_VERSION`
-
-Hai version có thể khác nhau. Ví dụ sửa Wi‑Fi/UI có thể tăng firmware version mà không đổi thermal model.
-
-## Provisioning và phục hồi
+## Provisioning / onboarding
 
 ```text
 BOOT
-  ↓
-loadConfig(NVS)
-  ↓
-hp20_provisioning: PROFILE_REVISION local > revision đã lưu?
-  ├─ có → apply local profile một lần → save NVS
-  └─ không → giữ nguyên NVS
-  ↓
-SSID có? ── có → Wi-Fi connect
-  └─ không → captive portal
+ ↓
+load NVS
+ ↓
+optional secrets.h revision newer? ─yes→ seed một lần vào NVS
+ ↓
+SSID có?
+ ├─ yes → reconnect bình thường
+ └─ no  → mở AP HP20-xxxxxx tối đa 10 phút
 
-Mất điện → NVS giữ config → tự reconnect.
-Đổi địa điểm → giữ BOOT 3 s → portal → save NVS → dùng mạng mới từ lần boot sau.
+Đổi mạng có chủ đích:
+physical BOOT hold ~3 s → open AP → captive portal → save NVS → reconnect
 ```
+
+AP setup v0.9.6 **không có password riêng**. Quyền mở AP dựa trên thao tác vật lý BOOT và timeout. Sau mất Wi-Fi bình thường, firmware không tự phơi AP; nó chỉ reconnect.
+
+Portal dành cho người dùng chỉ yêu cầu Wi-Fi/password. ThingsBoard/token/CA/OTA được đặt trong Advanced.
+
+## Trạng thái sau Save
+
+`portalSaved()` → reset cloud auth/cooldown có chủ đích → reconnect Wi-Fi → feedback LED/buzzer → gửi telemetry xác nhận sớm → trở về cadence chuẩn 5 phút.
+
+Portal giữ mở ngắn trong giai đoạn chuyển tiếp để phone đọc `/status`; sau khi Wi-Fi ổn định khoảng 30 giây, AP tự đóng.
 
 ## OTA
 
-`hp20_ota.*` chỉ chạy khi Wi-Fi/TLS/ThingsBoard sẵn sàng, cloud không có request đang bay và portal đóng. Telemetry tạm nhường đường trong lúc OTA. Firmware mới phải có title `HP20`, semantic version mới hơn và checksum SHA-256 hợp lệ trước khi `Update.end()` kích hoạt partition mới.
+`hp20_ota.*` chỉ chạy khi Wi-Fi/TLS/ThingsBoard sẵn sàng, portal đóng và cloud không có request đang xử lý. Firmware phải thỏa: `title=HP20`, version mới hơn, size hợp lệ, SHA-256 khớp.
 
+## TLS
 
-## TLS trust resolution
-
-`custom CA in NVS` → ưu tiên cao nhất. Nếu trống và host là `thingsboard.cloud` → dùng ISRG Root X1 tích hợp trong firmware. Host tùy chỉnh mà không có CA → chặn cloud/OTA an toàn.
+`custom CA in NVS` có ưu tiên cao nhất. Nếu trống và host là `thingsboard.cloud`, dùng ISRG Root X1 tích hợp. Host tùy chỉnh không có CA → chặn cloud/OTA an toàn.

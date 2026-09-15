@@ -1,47 +1,46 @@
-# HP20 Testing · v0.9.5
+# HP20 Testing · v0.9.6
 
-## Host regression
+## A. Regression phần lõi
 
 ```bash
-g++ -std=c++11 -Wall -Wextra \
-  tests/model_test.cpp \
-  hp20_thermal.cpp hp20_trend.cpp hp20_indicator.cpp \
-  -o /tmp/hp20-tests
-/tmp/hp20-tests
+g++ -std=c++11 -Wall -Wextra tests/model_test.cpp \
+  hp20_thermal.cpp hp20_trend.cpp hp20_indicator.cpp -o hp20-tests
+./hp20-tests
 ```
 
-Test bảo vệ:
+Kỳ vọng: `HP20 v0.9.6 ... tests passed`.
 
-- Heat Index invariants
-- thermal band boundaries
-- target range
-- UI FEEL smoothing state
-- green LED semantic ordering
-- trend direction
-- reminder timing
-- retry/cooldown
-- button debounce/hold
-- millis wrap-around
-- firmware version identity
+## B. Arduino build
 
-## Arduino hardware validation
+- ESP32 Dev Module
+- core 3.3.11
+- DHT 1.4.7
+- Adafruit Unified Sensor 1.1.15
+- U8g2 2.36.19
+- ArduinoJson 7.4.3
 
-Sau mỗi thay đổi firmware:
+Verify cả SH1106 và SSD1306 qua GitHub Actions.
 
-1. Verify compile.
-2. Upload.
-3. Serial boot phải hiện firmware version + thermal model version.
-4. OLED footer phải hiện firmware version.
-5. Kiểm tra đủ 7 trang UI bằng BOOT click.
-6. Comfort band → LED xanh sáng liên tục.
-7. Band nóng tăng dần → green presence giảm dần.
-8. Giữ BOOT ~3 giây → portal mở.
-9. Mất điện/cấp lại → Wi‑Fi/config được khôi phục.
-10. NVS trống + `secrets.h` local → seed NVS một lần, không mở portal.
-11. Đổi Wi‑Fi bằng portal → reboot vẫn dùng Wi‑Fi mới, local secrets không ghi đè.
-12. Portal: chỉ một luồng 3 bước; show/hide chỉ hiện dữ liệu mới đang nhập.
-13. Nếu cloud bật, không gửi dồn sau reboot.
-14. OTA OFF mặc định → không tự tải firmware.
-15. OTA ON → lệnh `OTA` kiểm tra shared attrs; cùng version không update.
-16. Package sai title/checksum/version → từ chối.
-17. Package đúng `HP20` + version mới + SHA-256 đúng → update/reboot và báo version mới.
+## C. Onboarding UX
+
+1. Giữ BOOT ~3 s.
+2. Phone thấy `HP20-xxxxxx`; kết nối **không password**.
+3. Captive portal tự mở; nếu không, vào 192.168.4.1.
+4. Wi-Fi list sắp mạnh → yếu, có nhãn dễ hiểu.
+5. Chọn mạng, nhập password, bấm Save.
+6. Web không đứng im: phải hiện progress.
+7. Connecting: 1 beep + LED xanh dương nháy nhanh.
+8. Success: 2 beep + LED sáng ngắn; ThingsBoard nhận dữ liệu.
+9. Sai password: khoảng 20 s phải có failure feedback + portal còn để sửa.
+10. Mất điện/reboot: không nhập lại.
+
+## D. Security regression
+
+- Wi-Fi mất kết nối bình thường không tự mở AP.
+- `secrets.h` không nằm trong Git/ZIP.
+- Token cũ không render đầy đủ lên browser.
+- Host custom không có CA thì cloud/OTA bị chặn an toàn.
+
+## E. OTA
+
+Bật OTA trong Advanced, lưu, reboot, xác nhận config vẫn bật. Test binary target phải có version > 0.9.6 và đúng panel OLED.

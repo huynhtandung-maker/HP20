@@ -1,50 +1,45 @@
-# HP20 Security & Secrets
+# HP20 Security & Secrets · v0.9.6
 
-Repository hiện là **public**. Quy tắc mặc định: coi mọi thứ commit lên GitHub là công khai vĩnh viễn.
+Repository/ZIP không được chứa secret thật:
 
-## Secrets không được commit
-
-- Wi‑Fi password
+- Wi-Fi password
 - ThingsBoard device token
 - private key
 - `.env` thật
 - `secrets.h` thật
-- NVS/flash dump
-- log/screenshot có credential nhạy cảm
+- flash/NVS dump
 
-`.gitignore` chặn các loại phổ biến, nhưng `.gitignore` không thay thế việc kiểm tra `git diff` trước commit.
+## Setup AP v0.9.6
 
-## Runtime credential flow
+HP20 setup Wi-Fi là **open AP** để giảm ma sát onboarding. Đây là quyết định UX có giới hạn bảo vệ:
+
+1. AP chỉ tự mở khi thiết bị chưa có Wi-Fi hoặc người dùng giữ BOOT ~3 giây.
+2. Wi-Fi mất kết nối bình thường **không tự mở AP**.
+3. Portal timeout sau khoảng 10 phút.
+4. Request cấu hình chỉ được chấp nhận từ interface AP.
+5. Form save có CSRF token; password/token đã lưu không được render đầy đủ.
+
+Với sản phẩm thương mại triển khai rộng, có thể nâng lên QR/PIN proof-of-possession thay vì thêm password Wi-Fi tạm thời khó dùng.
+
+## Credential flow
 
 ```text
-NVS đã có → dùng NVS
-secrets.h local có PROFILE_REVISION mới hơn → apply một lần vào NVS
-NVS/portal giữ quyền ưu tiên sau đó
-không có SSID → Captive Portal → NVS
+NVS hợp lệ → dùng NVS
+secrets.h local + PROFILE_REVISION mới → seed một lần → NVS
+không có SSID → captive portal → NVS
 ```
 
-`secrets.h` là file local bị `.gitignore` chặn. `secrets.example.h` chỉ chứa placeholder công khai. Portal không render lại password/token đã lưu; nút show/hide chỉ áp dụng cho giá trị mới đang nhập.
-
-`.env.example` chỉ là reference; firmware không đọc `.env`. Root CA là trust material công khai, nhưng vẫn phải lấy từ nguồn ThingsBoard tin cậy và kiểm soát thay đổi.
-
-## Nếu secret từng xuất hiện trên repo public
-
-1. Xem secret là đã lộ.
-2. Rotate/thay Wi‑Fi password hoặc ThingsBoard token ngay.
-3. Sau đó mới xem xét làm sạch Git history nếu cần.
-
-Chỉ xóa secret ở commit mới **không làm secret biến mất khỏi lịch sử Git**.
-
-## Giới hạn hiện tại
-
-Preferences/NVS baseline chưa được coi là storage chống trích xuất vật lý. Với sản phẩm thương mại, cần đánh giá Secure Boot, Flash Encryption, provisioning và device identity riêng.
-
+`secrets.example.h` chỉ chứa placeholder. `secrets.h` bị `.gitignore` chặn và cố ý không có trong ZIP phát hành.
 
 ## OTA security
 
-- OTA mặc định **OFF** cho tới khi owner bật.
-- Transport dùng HTTPS với CA đã cấu hình; không dùng `setInsecure()`.
-- Chỉ package title `HP20` và version mới hơn mới được xem xét.
-- Chỉ chấp nhận checksum `SHA256` 64 hex và kích thước hợp lý.
-- Binary được ghi vào OTA partition nhưng chỉ `Update.end()` sau khi checksum khớp.
-- Không commit access token vào GitHub để phục vụ OTA.
+- OTA mặc định OFF.
+- HTTPS có xác minh CA; không `setInsecure()`.
+- Chỉ title `HP20` và version mới hơn.
+- Checksum bắt buộc SHA-256 64 hex.
+- Binary chỉ được kích hoạt sau khi checksum khớp.
+- OTA không cần GitHub token trên ESP32.
+
+## Giới hạn
+
+Preferences/NVS hiện chưa được coi là storage chống trích xuất vật lý. Sản phẩm thương mại cần đánh giá Secure Boot, Flash Encryption, provisioning identity và signing policy riêng.

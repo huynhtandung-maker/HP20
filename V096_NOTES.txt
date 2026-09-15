@@ -1,0 +1,33 @@
+HP20 v0.9.6 RC1 - WHAT CHANGED
+==============================
+
+USER UX
+- Open setup AP: no temporary HP20 password.
+- Captive portal endpoints for Android/iOS/Windows.
+- Nearby Wi-Fi sorted by signal with human-readable quality labels.
+- Main screen only asks for Wi-Fi + password.
+- ThingsBoard/token/CA/telemetry/OTA moved to Advanced.
+- Save page immediately shows connection progress.
+
+DEVICE FEEDBACK
+- 1 beep + fast blue blink: connecting after Save.
+- 2 beeps + short solid blue: connected.
+- 3 beeps + triple pulse: not connected after ~20 s.
+- Existing green thermal-comfort LED semantics remain unchanged.
+
+NETWORK/SECURITY
+- Open AP is gated by first-boot or physical BOOT hold ~3 s (Serial SETUP also available).
+- Ordinary Wi-Fi loss never auto-opens the setup AP.
+- Portal timeout remains 10 minutes.
+- Credentials stay in NVS; real secrets.h is excluded from this package.
+
+THINGSBOARD
+- Standard telemetry cadence: 5 minutes.
+- Legacy 15-minute baseline is migrated once to 5 minutes.
+- Initial/onboarding validation may send earlier; normal cadence resumes afterward.
+
+OTA
+- OTA remains opt-in/off by default.
+- OTA polling choices: 15 min, 30 min, 1 h, 3 h, 6 h, 12 h, 24 h.
+- New config default: 1 h.
+- Existing HTTPS + title/version + SHA-256 gates preserved.
