@@ -1,5 +1,74 @@
 # Changelog
 
+## v0.9.4 — Repository-ready controlled baseline
+
+- Tách firmware version thành `hp20_version.h` làm single source of truth.
+- OLED footer, Serial boot và captive portal cùng đọc một firmware version.
+- Giữ modular architecture: sensor / thermal / trend / indicator / UI / cloud / portal.
+- Thermal threshold block được chú thích chi tiết để tự tuning cho người dùng Việt Nam.
+- Green LED biểu diễn comfort quality: càng kém thoải mái, màu xanh xuất hiện càng ít.
+- OLED 7 trang: tối đa một marquee trên mỗi trang nội dung.
+- Bổ sung host regression cho green LED và firmware identity.
+- Chuẩn hóa `.gitignore`, secrets policy, release checklist và GitHub Actions.
+- Không thay đổi Wi-Fi/password/token flow: credential thật vẫn nhập qua portal và lưu NVS.
+
+# HP20 Changelog
+
+## v0.9.1 — Clean baseline / no behavior change
+
+- Dọn source sau khi modular hóa v0.9.0.
+- Xóa `model::RoomBand/roomBand()` legacy không còn được runtime sử dụng.
+- Xóa `settings::UI_PAGE_MS` không còn dùng.
+- Xóa API `hp20::trend::advice()` không được gọi.
+- Chuyển `scaleXForFeel()` (pixel mapping) từ thermal domain sang private UI helper.
+- Host tests chuyển sang kiểm tra trực tiếp thermal/trend hiện hành.
+- Giữ nguyên thermal model `HP20-SG-HI-v0.9.0`.
+- Giữ nguyên calibration: Temperature `-7.0%`, Humidity `+6.8%`.
+- Không thay đổi Wi‑Fi, portal, ThingsBoard, reminder/buzzer, rate-limit hay OLED behavior.
+
+# Changelog
+
+# CHANGELOG — HP20
+
+## v0.8.3 — Release sync / housekeeping
+
+- Đồng bộ `settings::VERSION` lên `0.8.3`.
+- Đồng bộ `HP20_SG_HI_MODEL` lên `HP20-SG-HI-v0.8.3`.
+- Giữ nguyên hành vi chức năng của v0.8.2.
+- Giữ calibration hiện tại của người dùng: Temperature `-9.0%`, Humidity `+4.5%`.
+- Cập nhật README theo kiến trúc 7 tab OLED, chart, trend 10 phút và calibration.
+- Cập nhật SCIENCE để phân biệt FEEL/apparent heat với nhiệt độ cơ thể/WBGT.
+- Ghi rõ `model::RoomBand` là legacy/compatibility và không phải nguồn band UX hiện hành.
+- Không sửa cloud, portal, config, token, CA, retry, 429 cooldown hay ThingsBoard send budget.
+
+## v0.8.2
+
+- Thêm hiệu chỉnh % độc lập cho Temperature và Humidity DHT22.
+- Giữ raw values cho Serial diagnostics.
+- Giới hạn calibration ±20%.
+
+## v0.8.1
+
+- Thêm trend FEEL khoảng 10 phút.
+- Thêm sparkline và trạng thái tăng/giảm/ổn định.
+
+## v0.8.0
+
+- Thêm scale chart để hiển thị vị trí FEEL tương đối với vùng mục tiêu.
+- Dùng thời lượng trang động cho marquee.
+
+## v0.7.x
+
+- Mở rộng band FEEL và tái thiết kế OLED UX.
+
+
+
+## 0.4.0 — 2026-09-14
+
+- Mở rộng HP20-VN Office thành 8 mức: mát, dễ chịu, hơi ấm, ấm, nóng ẩm, khó chịu, rất nóng và rất khó chịu.
+- OLED thành năm tab tối giản; mỗi tab có một mục tiêu đọc, chỉ Tab nhận định/hành động dùng một dòng cuộn.
+- Điều chỉnh thời lượng: chỉ số 8 giây, nhận định/hành động 16 giây, kết nối 12 giây.
+
 ## 0.3.2 — 2026-09-14
 
 - Thiết kế lại OLED theo bốn tab: chỉ số chính, khuyến nghị thời gian thực, số đo môi trường, kết nối/cài đặt.

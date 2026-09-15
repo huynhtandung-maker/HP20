@@ -1,5 +1,6 @@
 #include "portal.h"
 #include "settings.h"
+#include "hp20_version.h"
 #include "model.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -29,7 +30,7 @@ static void home() {
 <style>body{font:16px system-ui;background:#101b22;color:#edf6f5;margin:0;padding:24px}main{max-width:520px;margin:auto}h1{font-size:32px}p{color:#b8caca;line-height:1.5}label{display:block;margin:18px 0 6px}input,textarea,button{box-sizing:border-box;width:100%;padding:12px;border:1px solid #48636a;border-radius:10px;background:#182b34;color:white;font:inherit}input[type=checkbox]{width:auto}button{margin-top:24px;background:#8adac3;color:#10251f;font-weight:bold}small{color:#b8caca}fieldset{border:1px solid #48636a;border-radius:12px;margin-top:24px}</style>
 <main><small>HP20 / ROOM MONITOR / %VERSION%</small><h1>Kết nối căn phòng</h1><p>Cấu hình được lưu trên ESP32 và giữ lại khi mất điện. Mật khẩu và token đã lưu không được hiển thị lại.</p><form action="/save" method="post">
 )HTML";
-  page.replace("%VERSION%",settings::VERSION);
+  page.replace("%VERSION%", hp20::version::STRING);
   page += "<input type='hidden' name='csrf' value='" + csrf + "'>";
   page += "<label>Tên Wi-Fi 2.4 GHz</label><input name='ssid' maxlength='32' required value='" + escape(current->ssid) + "'>";
   page += "<label>Mật khẩu Wi-Fi mới</label><input name='pass' type='password' maxlength='63' autocomplete='new-password'><small>Để trống giữ mật khẩu cũ. Nếu đổi mạng, nhập mật khẩu mới.</small><label><input type='checkbox' name='open'> Mạng mới không có mật khẩu</label>";

@@ -1,0 +1,23 @@
+HP20 v0.9.4 REPOSITORY-READY BASELINE
+=====================================
+
+LOCAL UPDATE
+1. Backup thư mục HP20 hiện tại.
+2. Copy toàn bộ nội dung thư mục HP20 trong package này đè vào thư mục project.
+3. Không đưa Wi-Fi password / ThingsBoard token vào source.
+4. Arduino IDE: Verify -> Upload -> test board thật.
+
+VERSION
+- Chỉ sửa hp20_version.h khi nâng firmware.
+- Không đặt version lại trong settings.h / UI / portal / HP20.ino.
+
+TUNING
+- DHT22 calibration: hp20_sensor.h
+- FEEL thresholds/meaning/action/target: hp20_thermal.cpp
+- Green LED timing: hp20_indicator.cpp
+- OLED layout: hp20_ui.cpp
+
+GITHUB
+- Dùng branch + Pull Request.
+- Không force-push main.
+- Không tag/release cho tới khi CI + hardware test PASS.
