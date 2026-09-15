@@ -311,7 +311,7 @@ uint8_t page() {
   return currentPage;
 }
 
-void tick(uint32_t now, const sensor::Reading& env, const char* cloudState) {
+void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, const char* otaState) {
   const bool setupOpen = portalActive();
   if (setupOpen && !portalWasActive) showSetupPage(now);
   portalWasActive = setupOpen;
@@ -461,7 +461,11 @@ void tick(uint32_t now, const sensor::Reading& env, const char* cloudState) {
                                                 : String("WIFI: DANG KET NOI"),
                  24, now);
       drawText(39, clipped(String(cloudState), 24));
-      drawText(52, "GIU BOOT 3s: CAI DAT");
+      const String otaLine = otaState ? String(otaState) : String("OTA: ?");
+      if (otaLine == "OTA: SAN SANG" || otaLine == "OTA: TAT" || otaLine == "OTA: MOI NHAT")
+        drawText(52, "BOOT 3s = CAI DAT");
+      else
+        drawText(52, clipped(otaLine, 24));
     }
     pageMark(currentPage);
   }

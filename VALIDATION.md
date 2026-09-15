@@ -1,4 +1,4 @@
-# HP20 Validation Status · v0.9.4
+# HP20 Validation Status · v0.9.5
 
 ## Đã kiểm tra trong package
 
@@ -7,6 +7,7 @@
 - Green LED semantic regression test: **PASS**.
 - Version source đã gom về `hp20_version.h`.
 - Không có Wi‑Fi password/token hard-code trong source package.
+- Hybrid provisioning và OTA source đã được thêm; cần CI + board validation trước merge.
 
 ## Cần xác nhận trên máy/ESP32 của chủ dự án trước release
 
@@ -15,7 +16,9 @@
 - OLED SH1106 128×64 layout và version footer.
 - DHT22 calibration với cảm biến tham chiếu.
 - Green LED timing bằng quan sát thực.
-- Captive portal lưu/đổi Wi‑Fi và ThingsBoard token.
+- Hybrid provisioning: NVS / secrets.h / portal priority.
+- Captive portal 3-step lưu/đổi Wi‑Fi và ThingsBoard token.
+- ThingsBoard OTA bằng binary v0.9.6 test sau khi flash v0.9.5 qua USB.
 - Power-cycle recovery.
 - ThingsBoard HTTPS nếu được cấu hình.
 

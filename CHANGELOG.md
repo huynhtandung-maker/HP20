@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.9.5 FIX2 — Built-in ThingsBoard Cloud CA
+
+- Bundled ISRG Root X1 for `thingsboard.cloud`; no PEM paste required for normal onboarding.
+- Custom CA in NVS still overrides built-in trust for custom/self-hosted ThingsBoard.
+- Cloud and OTA use the same effective CA policy.
+- Portal explains CA as advanced/custom-host only.
+
+## v0.9.5 — Provisioning UX + secure OTA
+
+- Thêm hybrid provisioning: NVS → local `secrets.h` → captive portal fallback.
+- `secrets.h` không lên GitHub; thêm `secrets.example.h` làm mẫu.
+- Portal được thiết kế lại thành 3 bước, scan SSID, show/hide dữ liệu mới đang nhập, review trước khi lưu.
+- Password/token đã lưu không bị render ngược ra browser; token chỉ hiện 4 ký tự cuối.
+- Thêm cấu hình OTA opt-in và chu kỳ kiểm tra 1–24 giờ.
+- Thêm `hp20_ota.*`: ThingsBoard HTTPS OTA, version gate, SHA-256, size guard, OTA partition và state reporting.
+- OLED/Serial bổ sung trạng thái OTA và lệnh `OTA` để kiểm tra ngay.
+- CI tạo binary artifact SH1106/SSD1306 để dùng cho ThingsBoard OTA.
+- NVS vẫn là nguồn cấu hình chính sau lần provisioning đầu tiên; mất điện không yêu cầu nhập lại.
+
 ## v0.9.4 — Repository-ready controlled baseline
 
 - Tách firmware version thành `hp20_version.h` làm single source of truth.

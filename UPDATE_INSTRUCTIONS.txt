@@ -1,23 +1,25 @@
-HP20 v0.9.4 REPOSITORY-READY BASELINE
-=====================================
+HP20 v0.9.5 PROVISIONING UX + OTA
+=================================
 
-LOCAL UPDATE
-1. Backup thư mục HP20 hiện tại.
-2. Copy toàn bộ nội dung thư mục HP20 trong package này đè vào thư mục project.
-3. Không đưa Wi-Fi password / ThingsBoard token vào source.
-4. Arduino IDE: Verify -> Upload -> test board thật.
+LOCAL FIRST BOOT
+1. Copy secrets.example.h -> secrets.h.
+2. Điền WIFI_SSID / WIFI_PASSWORD / TB_TOKEN / TB_CA_PEM trực tiếp trên máy.
+3. PROFILE_REVISION=1 cho lần áp local đầu tiên; tăng 2,3,... chỉ khi muốn local profile ghi đè NVS đúng một lần.
+4. secrets.h đã bị .gitignore chặn; KHÔNG git add -f file này.
+5. Arduino IDE: Verify -> Upload.
+6. Boot: revision local mới hơn revision đã lưu -> apply một lần vào NVS và tự kết nối.
+
+MOVE / CHANGE WI-FI
+- Giữ BOOT ~3 giây -> mở portal.
+- Portal lưu mạng mới vào NVS.
+- NVS có ưu tiên cao hơn secrets.h, nên reboot/mất điện tiếp tục dùng mạng mới.
+
+OTA
+- Mặc định OFF. Bật qua portal Advanced hoặc secrets.h.
+- ThingsBoard OTA package title phải là HP20.
+- Version package phải lớn hơn firmware hiện tại.
+- Chọn SHA-256.
+- Serial command OTA = kiểm tra ngay.
 
 VERSION
-- Chỉ sửa hp20_version.h khi nâng firmware.
-- Không đặt version lại trong settings.h / UI / portal / HP20.ino.
-
-TUNING
-- DHT22 calibration: hp20_sensor.h
-- FEEL thresholds/meaning/action/target: hp20_thermal.cpp
-- Green LED timing: hp20_indicator.cpp
-- OLED layout: hp20_ui.cpp
-
-GITHUB
-- Dùng branch + Pull Request.
-- Không force-push main.
-- Không tag/release cho tới khi CI + hardware test PASS.
+- Chỉ sửa hp20_version.h.

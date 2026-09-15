@@ -16,6 +16,9 @@
 #include "hp20_trend.h"
 #include "hp20_ui.h"
 #include "hp20_indicator.h"
+#include "hp20_provisioning.h"
+#include "hp20_ota.h"
+#include "thingsboard_ca.h"
 
 // =============================================================================
 // COMPONENT - APPLICATION / ORCHESTRATOR
@@ -58,6 +61,7 @@ uint32_t bootBeepSince = 0;
 uint32_t sendMark = 0;
 uint32_t waitSeconds = 900;
 uint32_t statusSince = 0;
+uint32_t ntpRetrySince = 0;
 uint64_t notBefore = 0;
 unsigned failures = 0;
 const char* cloudState = "CHUA CAU HINH";
@@ -107,7 +111,9 @@ void networkTick(uint32_t now) {
   if (connected && !wasConnected) {
     connectedSince = now;
     autoPortal = false;
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
+    configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
+    ntpRetrySince = now;
+    Serial.println("TIME sync requested (NTP)");
   }
 
   if (!connected && wasConnected) offlineSince = now;
@@ -135,8 +141,15 @@ void networkTick(uint32_t now) {
     }
 
     failures = 0;
+
+    // Explicit user save = onboarding/configuration intent. Allow one prompt
+    // telemetry attempt after reconnect instead of making the user wait a full
+    // telemetry interval. The normal anti-spam interval is restored before send.
     sendMark = now;
-    waitSeconds = config.intervalSeconds;
+    waitSeconds = 5;
+    notBefore = 0;
+    runtime.putULong64("notBefore", 0);
+
     remind = false;
     reminder = model::Reminder();
 
@@ -144,6 +157,7 @@ void networkTick(uint32_t now) {
     wasConnected = false;
     offlineSince = now;
     connectWifi();
+    if (config.otaEnabled) hp20::ota::requestCheck();
 
     closeOnConnect = true;
     connected = false;
@@ -163,6 +177,8 @@ void networkTick(uint32_t now) {
 
 void cloudTick(uint32_t now) {
   int result;
+
+  if (hp20::ota::busy()) return;
 
   if (cloudResult(result)) {
     inFlight = false;
@@ -205,7 +221,7 @@ void cloudTick(uint32_t now) {
     cloudState = "TB: CHUA CAU HINH";
     return;
   }
-  if (config.ca.isEmpty()) {
+  if (!hp20::tbtrust::hasEffectiveCa(config)) {
     cloudState = "TB: THIEU CA TLS";
     return;
   }
@@ -217,15 +233,32 @@ void cloudTick(uint32_t now) {
     cloudState = "TB: CHO WI-FI";
     return;
   }
-  if (time(nullptr) < 1704067200) {
-    cloudState = "TB: CHO DONG HO";
+  const time_t epochNow = time(nullptr);
+  if (epochNow < 1704067200) {
+    cloudState = "TB: DONG BO GIO";
+
+    // configTime() is asynchronous. Normally one request is enough, but some
+    // routers/DNS paths drop the first NTP exchange. Re-arm SNTP periodically
+    // instead of leaving the device in a stale wait state forever.
+    if (model::elapsed(now, ntpRetrySince, 30000)) {
+      configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
+      ntpRetrySince = now;
+      Serial.println("TIME sync retry (NTP)");
+    }
     return;
   }
   if (!hp20::sensor::fresh(now)) {
     cloudState = "TB: CHO CAM BIEN";
     return;
   }
-  if (nextSendSeconds(now) != 0) return;
+
+  const uint32_t remaining = nextSendSeconds(now);
+  if (remaining != 0) {
+    // Do not leave the previous state (for example "CHO DONG HO") stuck on
+    // screen after its condition has already cleared.
+    if (strcmp(cloudState, "TB: DA NHAN") != 0) cloudState = "TB: CHO LICH GUI";
+    return;
+  }
 
   const hp20::sensor::Reading& env = hp20::sensor::state();
   const hp20::thermal::State& th = hp20::thermal::state();
@@ -302,6 +335,7 @@ void controlsTick(uint32_t now) {
       blue = p < 80 || (p >= 200 && p < 280);
     }
     else if (WiFi.status() != WL_CONNECTED) blue = (now % 2000) < 80;
+    else if (hp20::ota::busy()) blue = (now % 500) < 250;
     else if (inFlight) blue = (now % 400) < 60;
     else blue = (now % 8000) < 50;
 
@@ -342,7 +376,7 @@ void serialTick(uint32_t now) {
 
     if (ch == '\r' || ch == '\n') {
       if (overflow) {
-        Serial.println("Command too long; use INFO, SETUP or BEEP");
+        Serial.println("Command too long; use INFO, SETUP, BEEP or OTA");
       }
       else if (used) {
         command[used] = '\0';
@@ -368,8 +402,12 @@ void serialTick(uint32_t now) {
           startBootBuzzer(now);
           Serial.println("BUZZER test requested");
         }
+        else if (strcmp(command, "OTA") == 0) {
+          hp20::ota::requestCheck();
+          Serial.println("OTA check requested");
+        }
         else {
-          Serial.println("Commands: INFO, SETUP, BEEP (New Line)");
+          Serial.println("Commands: INFO, SETUP, BEEP, OTA (New Line)");
         }
       }
 
@@ -390,7 +428,7 @@ void setup() {
     hp20::version::STRING,
     hp20::thermal::MODEL_VERSION
   );
-  Serial.println("Commands: INFO, SETUP, BEEP. Status every 10s.");
+  Serial.println("Commands: INFO, SETUP, BEEP, OTA. Status every 10s.");
   Serial.printf(
     "DHT22 calibration: TEMP=%+.2f%%  RH=%+.2f%%  (safety limit +/-%.0f%%)\n",
     hp20::sensor::safeCorrectionPercent(hp20::sensor::TEMP_CORRECTION_PERCENT),
@@ -417,20 +455,39 @@ void setup() {
   hp20::thermal::reset();
   hp20::trend::reset();
   hp20::ui::begin();
+  hp20::ota::begin();
 
-  loadConfig(config);
+  const bool configLoaded = loadConfig(config);
+  const bool localSeededNow = hp20::provisioning::seedFromLocalSecrets(config);
+  Serial.printf("Provisioning: NVS=%s local_secrets=%s seeded_now=%s wifi=%s\n",
+                configLoaded ? "OK" : "EMPTY",
+                hp20::provisioning::localSecretsCompiled() ? "YES" : "NO",
+                localSeededNow ? "YES" : "NO",
+                config.ssid.isEmpty() ? "EMPTY" : "READY");
 
   const bool storageOk = runtime.begin("room-runtime", false);
   if (storageOk) {
     notBefore = runtime.getULong64("notBefore", 0);
     authBlocked = runtime.getBool("auth", false);
+
+    // A newly applied developer-local profile is an explicit credential change.
+    // Clear stale cloud cooldown/auth state once so the new profile can be
+    // validated immediately.
+    if (localSeededNow) {
+      notBefore = 0;
+      authBlocked = false;
+      runtime.putULong64("notBefore", 0);
+      runtime.putBool("auth", false);
+    }
   }
 
   cloudReady = storageOk && cloudBegin();
   if (!cloudReady) cloudState = "LOI BO NHO / CLOUD";
 
+  // First boot/config validation should be observable quickly. After the first
+  // telemetry attempt, cloudTick() restores config.intervalSeconds BEFORE send.
   sendMark = millis();
-  waitSeconds = config.intervalSeconds;
+  waitSeconds = 10;
 
   WiFi.persistent(false);
   WiFi.setHostname("hp20-room");
@@ -467,7 +524,8 @@ void loop() {
   controlsTick(now);
   networkTick(now);
   cloudTick(now);
-  hp20::ui::tick(now, hp20::sensor::state(), cloudState);
+  hp20::ota::tick(now, config, cloudReady && !inFlight && !portalActive());
+  hp20::ui::tick(now, hp20::sensor::state(), cloudState, hp20::ota::label());
 
   if (model::elapsed(now, statusSince, settings::SERIAL_STATUS_MS)) {
     statusSince = now;
@@ -476,7 +534,7 @@ void loop() {
     const hp20::thermal::State& th = hp20::thermal::state();
 
     Serial.printf(
-      "STATUS up=%lus sensor=%s Traw=%.1f Tcal=%.1f RHraw=%.1f RHcal=%.1f HI=%.1f UI=%.1f band=%s green=%u%% trend=%s d10=%.1f wifi=%s portal=%s page=%u cloud=%s wait>=%lus\n",
+      "STATUS up=%lus sensor=%s Traw=%.1f Tcal=%.1f RHraw=%.1f RHcal=%.1f HI=%.1f UI=%.1f band=%s green=%u%% trend=%s d10=%.1f wifi=%s portal=%s page=%u cloud=%s ca=%s epoch=%lld ota=%s otaPct=%u wait>=%lus\n",
       (unsigned long)(now / 1000),
       hp20::sensor::fresh(now) ? "OK" : "INVALID",
       env.rawTempC,
@@ -493,6 +551,10 @@ void loop() {
       portalActive() ? "OPEN" : "CLOSED",
       unsigned(hp20::ui::page() + 1),
       cloudState,
+      hp20::tbtrust::caSourceLabel(config),
+      (long long)time(nullptr),
+      hp20::ota::label(),
+      unsigned(hp20::ota::progressPercent()),
       (unsigned long)nextSendSeconds(now)
     );
   }

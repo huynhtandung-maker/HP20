@@ -34,7 +34,7 @@ Ví dụ:
 
 ```powershell
 git add .
-git commit -m "release: HP20 v0.9.4 clean modular baseline"
+git commit -m "release: HP20 v0.9.5 provisioning UX and OTA"
 git push origin <branch>
 ```
 
@@ -47,6 +47,7 @@ GitHub Actions phải pass:
 - host regression tests
 - ESP32 SH1106 compile
 - ESP32 SSD1306 compile
+- firmware binary artifacts for OTA
 
 ## 6. Merge → tag → release
 
@@ -55,8 +56,8 @@ Chỉ sau khi phần cứng thật đã pass:
 ```powershell
 git checkout main
 git pull
-git tag -a v0.9.4 -m "HP20 v0.9.4"
-git push origin v0.9.4
+git tag -a v0.9.5 -m "HP20 v0.9.5"
+git push origin v0.9.5
 ```
 
 Git tag phải khớp `hp20::version::STRING`.

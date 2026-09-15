@@ -17,12 +17,15 @@ Repository hiện là **public**. Quy tắc mặc định: coi mọi thứ commi
 ## Runtime credential flow
 
 ```text
-User → Captive Portal → Config → ESP32 Preferences/NVS
+NVS đã có → dùng NVS
+secrets.h local có PROFILE_REVISION mới hơn → apply một lần vào NVS
+NVS/portal giữ quyền ưu tiên sau đó
+không có SSID → Captive Portal → NVS
 ```
 
-Firmware source không cần Wi‑Fi password/token. Portal không hiển thị lại password/token đã lưu.
+`secrets.h` là file local bị `.gitignore` chặn. `secrets.example.h` chỉ chứa placeholder công khai. Portal không render lại password/token đã lưu; nút show/hide chỉ áp dụng cho giá trị mới đang nhập.
 
-`.env.example` chỉ là reference; firmware không đọc `.env`.
+`.env.example` chỉ là reference; firmware không đọc `.env`. Root CA là trust material công khai, nhưng vẫn phải lấy từ nguồn ThingsBoard tin cậy và kiểm soát thay đổi.
 
 ## Nếu secret từng xuất hiện trên repo public
 
@@ -35,3 +38,13 @@ Chỉ xóa secret ở commit mới **không làm secret biến mất khỏi lị
 ## Giới hạn hiện tại
 
 Preferences/NVS baseline chưa được coi là storage chống trích xuất vật lý. Với sản phẩm thương mại, cần đánh giá Secure Boot, Flash Encryption, provisioning và device identity riêng.
+
+
+## OTA security
+
+- OTA mặc định **OFF** cho tới khi owner bật.
+- Transport dùng HTTPS với CA đã cấu hình; không dùng `setInsecure()`.
+- Chỉ package title `HP20` và version mới hơn mới được xem xét.
+- Chỉ chấp nhận checksum `SHA256` 64 hex và kích thước hợp lý.
+- Binary được ghi vào OTA partition nhưng chỉ `Update.end()` sau khi checksum khớp.
+- Không commit access token vào GitHub để phục vụ OTA.

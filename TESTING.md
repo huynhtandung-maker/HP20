@@ -1,4 +1,4 @@
-# HP20 Testing · v0.9.4
+# HP20 Testing · v0.9.5
 
 ## Host regression
 
@@ -37,4 +37,11 @@ Sau mỗi thay đổi firmware:
 7. Band nóng tăng dần → green presence giảm dần.
 8. Giữ BOOT ~3 giây → portal mở.
 9. Mất điện/cấp lại → Wi‑Fi/config được khôi phục.
-10. Nếu cloud bật, không gửi dồn sau reboot.
+10. NVS trống + `secrets.h` local → seed NVS một lần, không mở portal.
+11. Đổi Wi‑Fi bằng portal → reboot vẫn dùng Wi‑Fi mới, local secrets không ghi đè.
+12. Portal: chỉ một luồng 3 bước; show/hide chỉ hiện dữ liệu mới đang nhập.
+13. Nếu cloud bật, không gửi dồn sau reboot.
+14. OTA OFF mặc định → không tự tải firmware.
+15. OTA ON → lệnh `OTA` kiểm tra shared attrs; cùng version không update.
+16. Package sai title/checksum/version → từ chối.
+17. Package đúng `HP20` + version mới + SHA-256 đúng → update/reboot và báo version mới.
