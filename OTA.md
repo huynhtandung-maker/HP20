@@ -1,54 +1,120 @@
-# HP20 OTA · ThingsBoard HTTPS
+# HP20 OTA · ThingsBoard HTTPS + Dashboard Command
 
 ## Mục tiêu
 
-HP20 v0.9.5 là USB baseline hiện đang chạy ổn định. Nhánh release candidate v0.9.6 được dùng làm **OTA target đầu tiên** để kiểm chứng đường cập nhật từ xa end-to-end. OTA mặc định tắt và dùng cùng host/token/CA TLS với telemetry; thiết bị không cần GitHub token.
+HP20 v0.9.7 là baseline đã kiểm chứng OTA end-to-end. Nhánh `feature/v0.9.8-device-management` bổ sung lớp **device management** để người vận hành có thể kích hoạt kiểm tra/cập nhật firmware trực tiếp từ ThingsBoard Dashboard thay vì phải mở Serial Monitor và gõ `OTA`.
 
-## Device flow
+Nguyên tắc kiểm soát vẫn giữ nguyên:
+
+- ThingsBoard **Assigned firmware** quyết định firmware mục tiêu.
+- Nút Dashboard **không tự chọn file** và không bỏ qua version gate.
+- Thiết bị chỉ cập nhật khi OTA đã được bật trong captive portal.
+- HTTPS + CA + SHA-256 + size guard + inactive OTA partition vẫn bắt buộc.
+
+## Luồng chuẩn từ v0.9.8
 
 ```text
-Wi-Fi + TLS ready
-  ↓
-POST current_fw_title/current_fw_version
-  ↓
+GitHub Release (.bin)
+        ↓
+ThingsBoard OTA package
+        ↓
+Assign firmware cho HP20
+        ↓
+Dashboard → RPC updateFirmware
+        ↓
+HP20 nhận lệnh qua ThingsBoard HTTP RPC
+        ↓
 GET shared attrs fw_title/fw_version/fw_checksum/fw_checksum_algorithm/fw_size
-  ↓
+        ↓
 validate title=HP20 + newer version + SHA256 + size
-  ↓
+        ↓
 GET /api/v1/<token>/firmware?title=HP20&version=<target>
-  ↓
+        ↓
 write inactive OTA partition + stream SHA-256
-  ↓
+        ↓
 checksum match → Update.end() → reboot
+        ↓
+HP20 báo current_fw_version + fw_state trở lại ThingsBoard
 ```
 
-## Acceptance test v0.9.5 → v0.9.6
+## RPC chuẩn của HP20
 
-1. Giữ thiết bị đang chạy **v0.9.5**; không flash v0.9.6 bằng USB trước khi thử OTA.
-2. Mở portal, bật OTA và lưu cấu hình. Có thể chọn chu kỳ kiểm OTA 1 giờ để thử; lệnh Serial `OTA` vẫn cho phép kiểm ngay.
-3. GitHub Actions trên nhánh/release v0.9.6 phải xanh và sinh đúng binary của panel đang dùng.
-4. ThingsBoard → Advanced features → OTA updates → Add package.
-5. Title: `HP20`; Version: `0.9.6`; Type: Firmware; checksum SHA-256; upload binary đúng panel SH1106/SSD1306.
-6. Assign package **chỉ cho device HP20** ở lần thử đầu tiên, không rollout qua device profile.
-7. Gửi lệnh Serial `OTA` để yêu cầu kiểm tra ngay hoặc chờ chu kỳ kiểm OTA.
-8. Theo dõi `fw_state`: DOWNLOADING → DOWNLOADED → VERIFIED → UPDATING → UPDATED.
-9. Sau reboot, Serial phải báo `HP20 v0.9.6`; Wi-Fi/token/NVS vẫn còn; telemetry tiếp tục hoạt động.
-10. Chỉ sau khi bước 1–9 đạt mới tạo Git tag `v0.9.6` và GitHub Release chính thức.
+### `updateFirmware`
 
-## Sau khi v0.9.6 được phát hành
+Dùng cho nút **CẬP NHẬT FIRMWARE** trên Dashboard.
 
-- v0.9.6 trở thành baseline phát hành.
-- Lần kiểm OTA tiếp theo phải dùng version lớn hơn, ví dụ `0.9.7`; package cùng version sẽ bị firmware từ chối.
-- Rollout rộng chỉ thực hiện sau khi single-device OTA đã qua acceptance test.
+Thiết bị trả lời ngay khi đã nhận lệnh:
+
+```json
+{
+  "accepted": true,
+  "result": "OTA_CHECK_SCHEDULED",
+  "currentVersion": "0.9.8",
+  "otaEnabled": true
+}
+```
+
+Sau đó HP20 kiểm tra firmware đang được ThingsBoard gán và chỉ tải nếu version mới hơn firmware hiện tại.
+
+### `checkFirmware`
+
+Alias kỹ thuật của `updateFirmware`; dùng khi muốn tên nút là **KIỂM TRA BẢN MỚI**.
+
+### `getDeviceInfo`
+
+Trả về firmware hiện tại, trạng thái OTA, progress và lỗi gần nhất; hữu ích khi debug widget hoặc kiểm thử RPC.
+
+## Client attributes HP20 gửi lên ThingsBoard
+
+| Key | Ý nghĩa |
+|---|---|
+| `current_fw_title` | Firmware family hiện tại, chuẩn là `HP20` |
+| `current_fw_version` | Version thực tế đang chạy |
+| `ota_rpc_supported` | `true` nếu firmware hỗ trợ Dashboard RPC |
+| `ota_rpc_method` | RPC chính, chuẩn là `updateFirmware` |
+| `fw_state` | CHECKING / DOWNLOADING / DOWNLOADED / VERIFIED / UPDATING / UPDATED / FAILED |
+| `fw_progress` | 0–100 |
+| `fw_error` | Chuỗi lỗi gần nhất; rỗng khi không có lỗi |
+
+ThingsBoard tự tạo các shared attributes `fw_title`, `fw_version`, `fw_checksum`, `fw_checksum_algorithm`, `fw_size` khi firmware package được assign cho device.
+
+## Chu kỳ nhận lệnh Dashboard
+
+HP20 v0.9.8 giữ transport HTTPS hiện có và dùng ThingsBoard HTTP server-side RPC polling. Thiết bị kiểm tra command khoảng mỗi **10 giây**; do đó nút Dashboard không phải instant theo mili-giây nhưng thường được nhận trong một chu kỳ polling.
+
+Đây là lựa chọn có chủ đích để không thay toàn bộ transport sang MQTT trong một patch release. Nếu về sau triển khai fleet lớn hoặc cần command realtime, bước kiến trúc tiếp theo nên chuyển control channel sang MQTT persistent connection.
+
+## Bootstrap v0.9.7 → v0.9.8
+
+v0.9.7 chưa có receiver cho Dashboard RPC. Vì vậy **lần chuyển từ 0.9.7 lên 0.9.8 là lần bootstrap cuối cùng** và dùng một trong hai cách:
+
+1. OTA hiện tại bằng Serial command `OTA`, hoặc
+2. USB upload trực tiếp binary v0.9.8 trong giai đoạn acceptance.
+
+Sau khi thiết bị đã chạy v0.9.8, các bản tiếp theo có thể dùng:
+
+```text
+Assign firmware mới → Dashboard button → updateFirmware → OTA
+```
+
+## Acceptance test v0.9.8
+
+1. Pull branch `feature/v0.9.8-device-management`.
+2. Verify/compile trong Arduino IDE.
+3. Upload v0.9.8 một lần để bootstrap device test.
+4. Serial phải báo `HP20 v0.9.8`.
+5. ThingsBoard → Attributes phải thấy `current_fw_version=0.9.8`, `ota_rpc_supported=true`.
+6. Giữ Assigned firmware là 0.9.8 và bấm Dashboard RPC `updateFirmware`.
+7. RPC phải trả `accepted=true`; HP20 phải đi qua `CHECKING` rồi về `UPDATED`, không reboot vì target không mới hơn.
+8. Acceptance nâng version thực sự thực hiện với target kế tiếp, ví dụ 0.9.9.
+9. Khi 0.9.8 ổn định mới merge vào `main`, tag `v0.9.8`, tạo GitHub Release và đính kèm đúng `.bin`.
 
 ## Safety gates
 
-- HTTPS + CA required; không insecure TLS.
-- OTA chỉ chạy khi portal đóng và cloud không có request đang xử lý.
-- Giới hạn binary 4 MiB ở firmware HP20.
+- HTTPS + CA required; không dùng insecure TLS.
+- OTA phải được bật rõ ràng trong Portal.
+- Nút Dashboard chỉ kích hoạt **check**, không vượt qua assignment/version/SHA gate.
 - Sai title/version/SHA-256/size → từ chối.
-- Telemetry nhường đường khi OTA đang chạy.
-
-## Serial
-
-`OTA` + New Line: yêu cầu kiểm tra ngay.
+- Firmware binary giới hạn 4 MiB.
+- Telemetry nhường đường khi OTA đang download/apply.
+- Serial `OTA` vẫn được giữ làm kênh service/fallback.
