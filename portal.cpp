@@ -119,7 +119,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin-top:16px;line-
 <div class="check"><input id="clearToken" name="clearToken" type="checkbox"><label for="clearToken">Xóa token và ngừng gửi cloud</label></div>
 <details><summary>Cài đặt nâng cao</summary>
 <label>ThingsBoard host</label><input id="host" name="host" maxlength="127" value="%HOST%" oninput="refreshReview()"><div class="hint"><span>Chỉ hostname, không nhập https://</span></div>
-<label>Chu kỳ gửi telemetry</label><select id="minutes" name="minutes" onchange="refreshReview()"><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="180">3 giờ</option><option value="360">6 giờ</option><option value="1440">24 giờ</option></select>
+<label>Chu kỳ gửi telemetry</label><select id="minutes" name="minutes" onchange="refreshReview()"><option value="5">5 phút (chuẩn)</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="180">3 giờ</option><option value="360">6 giờ</option><option value="1440">24 giờ</option></select>
 <label>CA TLS tùy chỉnh (chỉ cho server riêng)</label><textarea name="ca" maxlength="5999" placeholder="-----BEGIN CERTIFICATE-----"></textarea><div class="hint"><span>%CA_STATUS%</span><span>ThingsBoard Cloud: không cần nhập CA</span></div>
 <div class="check"><input id="otaEnabled" name="otaEnabled" type="checkbox" %OTA_CHECKED%><label for="otaEnabled"><b>Cho phép cập nhật firmware từ xa qua ThingsBoard OTA</b><br><small>Chỉ nhận firmware có title HP20, version mới hơn và SHA-256 hợp lệ.</small></label></div>
 <label>Kiểm tra bản cập nhật</label><select id="otaHours" name="otaHours"><option value="1">Mỗi 1 giờ</option><option value="3">Mỗi 3 giờ</option><option value="6">Mỗi 6 giờ</option><option value="12">Mỗi 12 giờ</option><option value="24">Mỗi 24 giờ</option></select>
@@ -153,7 +153,7 @@ refreshReview();
   page.replace("%THRESHOLD%", current ? String(current->threshold, 1) : "35.0");
 
   // Restore stored select values without adding another server-side template engine.
-  const int minutes = current ? int(current->intervalSeconds / 60) : 15;
+  const int minutes = current ? int(current->intervalSeconds / 60) : 5;
   const int otaHours = current ? int(current->otaCheckSeconds / 3600) : 6;
   page.replace("<option value=\"" + String(minutes) + "\">",
                "<option value=\"" + String(minutes) + "\" selected>");
@@ -247,7 +247,7 @@ static void save() {
   const long minutes = server.arg("minutes").toInt();
   const float threshold = server.arg("threshold").toFloat();
   const long otaHours = server.arg("otaHours").toInt();
-  if (minutes < 15 || minutes > 1440 || !isfinite(threshold) ||
+  if (minutes < 5 || minutes > 1440 || !isfinite(threshold) ||
       threshold < 27 || threshold > 60 || otaHours < 1 || otaHours > 24) {
     reply(400, "Chu kỳ hoặc ngưỡng không hợp lệ.");
     return;

@@ -10,7 +10,7 @@ struct Config {
   String ca;
 
   // Telemetry / reminder
-  uint32_t intervalSeconds = 900;
+  uint32_t intervalSeconds = 300; // Standard HP20 cadence: 5 minutes.
   bool reminder = false;
   bool sound = false;
   float threshold = 35; // Inactive until explicitly enabled by the user.

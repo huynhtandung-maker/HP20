@@ -17,7 +17,7 @@ bool loadConfig(Config& c) {
   c.host = d["host"] | "thingsboard.cloud";
   c.token = d["token"].as<String>();
   c.ca = d["ca"].as<String>();
-  c.intervalSeconds = constrain(d["interval"] | 900U, 900U, 86400U);
+  c.intervalSeconds = constrain(d["interval"] | 300U, 300U, 86400U);
   c.reminder = d["reminder"] | false;
   c.sound = d["sound"] | false;
   c.threshold = constrain(d["threshold"] | 35.0f, 27.0f, 60.0f);
