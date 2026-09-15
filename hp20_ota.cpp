@@ -38,8 +38,17 @@ constexpr uint32_t HTTP_TIMEOUT_MS = 12000UL;
 constexpr size_t DOWNLOAD_BUFFER = 2048;
 constexpr size_t MAX_FIRMWARE_BYTES = 4UL * 1024UL * 1024UL;
 
+// ThingsBoard HTTP server-side RPC is long-poll based. HP20 keeps the polling
+// deliberately modest so a dashboard command feels responsive without turning
+// the device into a high-frequency cloud poller. The RPC path is only active
+// while OTA is explicitly enabled in the setup portal.
+constexpr uint32_t RPC_POLL_INTERVAL_MS = 10000UL;
+constexpr uint32_t RPC_SERVER_WAIT_MS = 300UL;
+constexpr uint32_t RPC_HTTP_TIMEOUT_MS = 2500UL;
+
 State currentState = State::Waiting;
 uint32_t lastCheckAt = 0;
+uint32_t lastRpcPollAt = 0;
 bool forceCheck = false;
 bool announced = false;
 bool firstCheckDone = false;
@@ -139,6 +148,21 @@ bool openSecure(HTTPClient& http, WiFiClientSecure& client,
   return true;
 }
 
+// Remote-command polling must not turn a temporary command-channel problem into
+// an OTA failure. Therefore this helper is intentionally quiet: OTA state is
+// untouched if an RPC poll cannot connect.
+bool openSecureQuiet(HTTPClient& http, WiFiClientSecure& client,
+                     const Config& config, const String& url) {
+  const char* ca = hp20::tbtrust::effectiveCa(config);
+  if (!ca) return false;
+  client.setCACert(ca);
+  client.setHandshakeTimeout(8);
+  http.setConnectTimeout(4000);
+  http.setTimeout(RPC_HTTP_TIMEOUT_MS);
+  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  return http.begin(client, url);
+}
+
 bool postAttributes(const Config& config, const String& json) {
   if (WiFi.status() != WL_CONNECTED || config.host.isEmpty() ||
       config.token.isEmpty() || !hp20::tbtrust::hasEffectiveCa(config)) return false;
@@ -155,14 +179,94 @@ bool postAttributes(const Config& config, const String& json) {
 }
 
 void reportState(const Config& config, const char* fwState, const String& error = "") {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<320> doc;
   doc["current_fw_title"] = hp20::version::TITLE;
   doc["current_fw_version"] = hp20::version::STRING;
   doc["fw_state"] = fwState;
-  if (!error.isEmpty()) doc["fw_error"] = error;
+  doc["fw_progress"] = progress;
+  doc["fw_error"] = error; // Empty string intentionally clears a stale error.
   String body;
   serializeJson(doc, body);
   postAttributes(config, body);
+}
+
+bool postRpcReply(const Config& config, long requestId, const String& json) {
+  WiFiClientSecure client;
+  HTTPClient http;
+  const String url = "https://" + config.host + "/api/v1/" +
+                     config.token + "/rpc/" + String(requestId);
+  if (!openSecureQuiet(http, client, config, url)) return false;
+  http.addHeader("Content-Type", "application/json");
+  const int code = http.POST(json);
+  http.end();
+  return code >= 200 && code < 300;
+}
+
+bool handleRpcCommand(const Config& config, const String& body) {
+  DynamicJsonDocument request(768);
+  if (deserializeJson(request, body)) return false;
+
+  const long requestId = request["id"] | -1L;
+  const String method = request["method"] | "";
+  if (requestId < 0 || method.isEmpty()) return false;
+
+  StaticJsonDocument<384> reply;
+  reply["currentVersion"] = hp20::version::STRING;
+  reply["otaEnabled"] = config.otaEnabled;
+
+  if (method == "updateFirmware" || method == "checkFirmware") {
+    if (!config.otaEnabled) {
+      reply["accepted"] = false;
+      reply["result"] = "OTA_DISABLED";
+    } else {
+      forceCheck = true;
+      reply["accepted"] = true;
+      reply["result"] = "OTA_CHECK_SCHEDULED";
+      reply["message"] = "HP20 will check the assigned ThingsBoard firmware now";
+      Serial.printf("TB RPC %s accepted (id=%ld)\n", method.c_str(), requestId);
+    }
+  }
+  else if (method == "getDeviceInfo") {
+    reply["accepted"] = true;
+    reply["title"] = hp20::version::TITLE;
+    reply["version"] = hp20::version::STRING;
+    reply["otaState"] = label();
+    reply["progress"] = progress;
+    reply["lastError"] = errorText;
+  }
+  else {
+    reply["accepted"] = false;
+    reply["result"] = "UNSUPPORTED_METHOD";
+    reply["method"] = method;
+    Serial.printf("TB RPC unsupported method=%s id=%ld\n", method.c_str(), requestId);
+  }
+
+  String response;
+  serializeJson(reply, response);
+  return postRpcReply(config, requestId, response);
+}
+
+void pollRpc(uint32_t now, const Config& config) {
+  if (!model::elapsed(now, lastRpcPollAt, RPC_POLL_INTERVAL_MS)) return;
+  lastRpcPollAt = now;
+
+  WiFiClientSecure client;
+  HTTPClient http;
+  const String url = "https://" + config.host + "/api/v1/" + config.token +
+                     "/rpc?timeout=" + String(RPC_SERVER_WAIT_MS);
+  if (!openSecureQuiet(http, client, config, url)) return;
+
+  const int code = http.GET();
+  if (code == HTTP_CODE_OK) {
+    const String body = http.getString();
+    http.end();
+    if (!body.isEmpty()) handleRpcCommand(config, body);
+    return;
+  }
+
+  // A timeout/no-command response is normal for HTTP RPC polling. Do not alter
+  // OTA state and do not spam Serial for routine empty polls.
+  http.end();
 }
 
 bool fetchTarget(const Config& config, Target& target) {
@@ -298,7 +402,7 @@ bool downloadAndApply(const Config& config, const Target& target) {
       }
       received += size_t(got);
       lastDataAt = millis();
-            size_t percent = (received * 100U) / target.size;
+      size_t percent = (received * 100U) / target.size;
       if (percent > 100U) percent = 100U;
       progress = uint8_t(percent);
       delay(1);
@@ -336,6 +440,7 @@ bool downloadAndApply(const Config& config, const Target& target) {
   }
 
   // ThingsBoard OTA state machine: binary transfer finished, checksum next.
+  progress = 100;
   reportState(config, "DOWNLOADED");
   currentState = State::Verifying;
   const String calculated = sha256Hex(digest);
@@ -369,6 +474,7 @@ bool downloadAndApply(const Config& config, const Target& target) {
 void begin() {
   currentState = State::Waiting;
   lastCheckAt = millis();
+  lastRpcPollAt = millis();
   forceCheck = false;
   announced = false;
   firstCheckDone = false;
@@ -418,15 +524,24 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
     return;
   }
 
-  // Publish firmware identity once per boot so ThingsBoard knows the active version.
+  // Publish firmware identity + command capability once per boot so a dashboard
+  // can display exactly what the device is running and which RPC it accepts.
   if (!announced) {
-    StaticJsonDocument<192> doc;
+    StaticJsonDocument<320> doc;
     doc["current_fw_title"] = hp20::version::TITLE;
     doc["current_fw_version"] = hp20::version::STRING;
+    doc["ota_rpc_supported"] = true;
+    doc["ota_rpc_method"] = "updateFirmware";
     String body;
     serializeJson(doc, body);
     if (postAttributes(config, body)) announced = true;
   }
+
+  // Dashboard action path. A ThingsBoard server-side RPC named updateFirmware
+  // (or checkFirmware) simply requests an immediate check of the firmware that
+  // is already assigned to this device. Assignment remains the control plane;
+  // the button is only the execution trigger.
+  pollRpc(now, config);
 
   const uint32_t intervalMs = config.otaCheckSeconds * 1000UL;
   const bool firstDue = !firstCheckDone && now >= FIRST_CHECK_DELAY_MS;
@@ -439,6 +554,7 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
   errorText = "";
   progress = 0;
   currentState = State::Checking;
+  reportState(config, "CHECKING");
 
   Target target;
   if (!fetchTarget(config, target)) {
@@ -448,6 +564,7 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
 
   if (target.title.isEmpty() || target.version.isEmpty()) {
     currentState = State::UpToDate;
+    reportState(config, "NO_FIRMWARE_ASSIGNED");
     return;
   }
 
@@ -459,6 +576,7 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
 
   if (!newerThanCurrent(target.version)) {
     currentState = State::UpToDate;
+    progress = 100;
     reportState(config, "UPDATED");
     return;
   }
