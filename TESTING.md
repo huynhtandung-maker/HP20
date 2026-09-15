@@ -1,37 +1,47 @@
-# Kiểm thử HP20
+# HP20 Testing · v0.9.5
 
-## Tự động
+## Host regression
 
-Trên Linux/CI: `g++ -std=c++11 -Wall -Wextra tests/model_test.cpp -o /tmp/hp20-model-test && /tmp/hp20-model-test`.
-Trên Windows, đặt tệp test biên dịch trong Temp, không đặt trong sketch.
+```bash
+g++ -std=c++11 -Wall -Wextra \
+  tests/model_test.cpp \
+  hp20_thermal.cpp hp20_trend.cpp hp20_indicator.cpp \
+  -o /tmp/hp20-tests
+/tmp/hp20-tests
+```
 
-Kiểm tra điểm HI đối chiếu bảng NWS, đầu vào lỗi, ngoài miền, RH tăng,
-tràn bộ đếm millis, thời gian giữ ngưỡng, độ trễ thoát, reset do lỗi cảm biến,
-tăng khoảng chờ, chống dội/giữ/thả BOOT và mô phỏng 31 ngày có khởi động lại. GitHub Actions biên dịch thêm hai driver OLED trên ESP32 core 3.3.11.
-Xem `VALIDATION.md` để biết kiểm tra nào thực sự đã chạy.
+Test bảo vệ:
 
-## Trên phần cứng — chưa thực hiện
+- Heat Index invariants
+- thermal band boundaries
+- target range
+- UI FEEL smoothing state
+- green LED semantic ordering
+- trend direction
+- reminder timing
+- retry/cooldown
+- button debounce/hold
+- millis wrap-around
+- firmware version identity
 
-| Ca kiểm tra | Kết quả phải đạt |
-|---|---|
-| Lần đầu chưa cấu hình | AP có mật khẩu; OLED hiển thị SSID/PW/địa chỉ |
-| Sai mật khẩu Wi-Fi | Không xóa cấu hình; có thể sửa lại bằng portal |
-| Router mất điện lâu hơn ESP32 | ESP32 vẫn đo, kết nối lại khi router sẵn sàng |
-| Rút điện/cắm lại | Cấu hình giữ nguyên; không phát sinh gửi ngay |
-| Mất điện sau một lần gửi | Giữ mốc chờ và chờ thêm chu kỳ khởi động |
-| Mạng mới | Giữ BOOT 3 giây mở portal; lưu và nối được mạng mới |
-| Không có token/CA | Đo tại chỗ; không phát yêu cầu cloud |
-| TLS sai CA / mất NTP | Không gửi token qua kết nối không xác thực |
-| HTTP 401/403 | Dừng đến khi lưu cấu hình; không lặp xác thực |
-| HTTP 429 | Dừng 24h, bao gồm qua reset |
-| Cloud chậm | OLED/cảm biến vẫn cập nhật |
-| DHT22 bị rút | Hiển thị lỗi, không gửi số cũ, không tính HI |
-| Ngoài miền mô hình | HI = không áp dụng; khóa validity=false trên cloud |
-| Nhắc bật, vượt ngưỡng <2 phút | Không báo |
-| Nhắc bật, vượt ngưỡng ≥2 phút | LED nhắc; còi chỉ khi được bật |
-| Dao động quanh ngưỡng | Không bật/tắt liên tục; thoát dưới ngưỡng 1°C |
-| Portal qua IP LAN nhà | Bị từ chối |
-| Thiếu/sai CSRF | Không lưu cấu hình |
-| Chạy ít nhất 24h | Không reset bất thường; số yêu cầu đúng ngân sách |
+## Arduino hardware validation
 
-Xác nhận OLED 128×64/driver, nguồn còi và dòng tải trước khi nghiệm thu.
+Sau mỗi thay đổi firmware:
+
+1. Verify compile.
+2. Upload.
+3. Serial boot phải hiện firmware version + thermal model version.
+4. OLED footer phải hiện firmware version.
+5. Kiểm tra đủ 7 trang UI bằng BOOT click.
+6. Comfort band → LED xanh sáng liên tục.
+7. Band nóng tăng dần → green presence giảm dần.
+8. Giữ BOOT ~3 giây → portal mở.
+9. Mất điện/cấp lại → Wi‑Fi/config được khôi phục.
+10. NVS trống + `secrets.h` local → seed NVS một lần, không mở portal.
+11. Đổi Wi‑Fi bằng portal → reboot vẫn dùng Wi‑Fi mới, local secrets không ghi đè.
+12. Portal: chỉ một luồng 3 bước; show/hide chỉ hiện dữ liệu mới đang nhập.
+13. Nếu cloud bật, không gửi dồn sau reboot.
+14. OTA OFF mặc định → không tự tải firmware.
+15. OTA ON → lệnh `OTA` kiểm tra shared attrs; cùng version không update.
+16. Package sai title/checksum/version → từ chối.
+17. Package đúng `HP20` + version mới + SHA-256 đúng → update/reboot và báo version mới.

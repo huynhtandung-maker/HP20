@@ -1,21 +1,33 @@
+# Build output
 .pio/
 .build/
-secrets.h
-model-test
-.vscode/
-.env
-.env.*
-!.env.example
-include/secrets.h
-*.pem
-*.key
+build/
 *.bin
 *.elf
-*.log
-__pycache__/
-
-*.exe
-*.zip
 *.map
 *.o
 *.d
+
+# Local IDE/editor state
+.vscode/
+.idea/
+
+# Local credentials / secrets - NEVER COMMIT
+.env
+.env.*
+!.env.example
+secrets.h
+include/secrets.h
+*.pem
+*.key
+
+# Runtime/debug artifacts
+*.log
+*.dump
+*.nvs
+__pycache__/
+
+# Local release bundles
+*.zip
+*.rar
+*.exe

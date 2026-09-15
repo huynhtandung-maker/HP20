@@ -1,4 +1,5 @@
 #include "cloud.h"
+#include "thingsboard_ca.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <freertos/FreeRTOS.h>
@@ -33,7 +34,9 @@ bool cloudSubmit(const Config& c, const String& payload) {
   auto* j = new CloudJob{};
   strlcpy(j->host, c.host.c_str(), sizeof(j->host));
   strlcpy(j->token, c.token.c_str(), sizeof(j->token));
-  strlcpy(j->ca, c.ca.c_str(), sizeof(j->ca));
+  const char* ca = hp20::tbtrust::effectiveCa(c);
+  if (!ca) { memset(j, 0, sizeof(*j)); delete j; return false; }
+  strlcpy(j->ca, ca, sizeof(j->ca));
   strlcpy(j->payload, payload.c_str(), sizeof(j->payload));
   bool ok = xQueueSend(jobs, j, 0) == pdTRUE;
   memset(j, 0, sizeof(*j)); delete j; return ok;

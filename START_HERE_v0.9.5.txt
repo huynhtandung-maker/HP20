@@ -1,0 +1,63 @@
+HP20 v0.9.5 — PROVISIONING UX + THINGSBOARD OTA
+================================================
+
+MUC TIEU
+- Developer/owner: co the nap Wi-Fi/password/token bang secrets.h local.
+- NVS giu cau hinh qua mat dien.
+- Doi dia diem/Wi-Fi: giu BOOT ~3s -> portal 3 buoc -> save NVS.
+- OTA tu xa qua ThingsBoard HTTPS, SHA-256, OTA partition.
+
+1) FILE LOCAL KHONG LEN GITHUB
+Mo secrets.h va dien:
+  PROFILE_REVISION = 1;
+  WIFI_SSID
+  WIFI_PASSWORD
+  TB_HOST = "thingsboard.cloud"
+  TB_TOKEN
+  TB_CA_PEM
+  OTA_ENABLED = false  (bat true sau khi USB validation pass)
+  OTA_CHECK_SECONDS = 21600
+
+Khi MUON local secrets ghi de NVS mot lan nua:
+  tang PROFILE_REVISION: 1 -> 2 -> 3...
+Neu khong tang revision, thay doi bang portal se duoc ton trong sau reboot.
+
+2) TLS CA
+Lay tb-cloud-root-ca.pem tu ThingsBoard Device -> Check connectivity.
+Dan nguyen PEM vao TB_CA_PEM trong secrets.h.
+KHONG dung setInsecure().
+
+3) NAP USB LAN DAU
+Arduino IDE -> Verify -> Upload.
+Serial 115200 can thay:
+  HP20 v0.9.5 boot
+  Provisioning: ... local_secrets=YES seeded_now=YES ...
+Sau lan seed, NVS la nguon chinh.
+
+4) PORTAL FALLBACK
+- Giu BOOT ~3 giay.
+- OLED hien AP/password/192.168.4.1.
+- Portal moi: 3 buoc Wi-Fi -> Cloud -> Xac nhan.
+- Co show/hide chi cho password/token MOI dang nhap.
+- Secret DA LUU khong bi hien lai day du.
+
+5) OTA
+Sau khi v0.9.5 chay on dinh, bat OTA_ENABLED=true bang portal Advanced
+hoac tang PROFILE_REVISION va set OTA_ENABLED=true trong secrets.h.
+
+De test OTA phai tao firmware MOI v0.9.6:
+ThingsBoard -> Advanced features -> OTA updates -> Add package
+  Title   = HP20
+  Version = 0.9.6
+  Type    = Firmware
+  Binary  = dung file SH1106 hoac SSD1306
+  Checksum= SHA-256
+Gan package cho RIENG device HP20 truoc.
+Serial command "OTA" + New Line = check ngay.
+
+6) GIT
+secrets.h da bi .gitignore chan.
+Kiem tra:
+  git check-ignore -v secrets.h
+  git ls-files secrets.h
+Lenh thu hai phai KHONG tra ve gi.

@@ -1,0 +1,17 @@
+HP20 v0.9.5 FIX4
+=================
+Purpose: remove misleading/stale cloud state during first-run and make the first
+ThingsBoard validation observable quickly.
+
+Changes in HP20.ino only:
+- NTP now tries time.cloudflare.com, time.google.com, pool.ntp.org.
+- NTP re-arms every 30 s while epoch is invalid.
+- Cloud UI state changes to TB: DONG BO GIO only while clock is actually invalid.
+- While waiting for the telemetry schedule, state is TB: CHO LICH GUI instead of
+  keeping an obsolete prior message.
+- First boot attempts cloud validation after 10 s (subject to persisted cooldown).
+- Explicit portal save allows a first validation attempt after 5 s.
+- New local provisioning revision clears stale auth/cooldown once.
+- Serial STATUS prints CA source and epoch for diagnosis.
+
+Normal telemetry interval/rate limiting resumes before every actual cloud send.
