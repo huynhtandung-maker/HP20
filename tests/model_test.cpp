@@ -40,10 +40,9 @@ int main() {
   assert(std::abs(hp20::thermal::optimalLowFeel() - 28.0f) < 0.001f);
   assert(std::abs(hp20::thermal::optimalHighFeel() - 33.0f) < 0.001f);
 
-
   // Firmware identity is centralized in hp20_version.h.
   static_assert(hp20::version::MAJOR == 0, "Unexpected major version");
-  assert(std::string(hp20::version::STRING) == "0.9.6");
+  assert(std::string(hp20::version::STRING) == "0.9.7");
 
   // Green LED semantics: Comfort is solid green; hotter bands progressively
   // reduce green presence. This is a comfort signal, not an alarm strobe.
@@ -173,5 +172,5 @@ int main() {
   }
   assert(model::remainingSeconds(900000, 0, 900, epoch - 3600, epoch + 900) == 4500);
 
-  std::cout << "HP20 v0.9.6 core/thermal/indicator/trend/button/cooldown tests passed\n";
+  std::cout << "HP20 v0.9.7 core/thermal/indicator/trend/button/cooldown tests passed\n";
 }
