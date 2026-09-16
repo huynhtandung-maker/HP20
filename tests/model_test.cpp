@@ -22,24 +22,49 @@ int main() {
   assert(!model::validSample(25, -1));
   assert(model::validSample(32.5f, 72.0f));
 
-  // Current HP20-SG-HI band source of truth.
+  // HP20 v0.9.17 VN-HOT-HUMID v1 thermal-band source of truth.
+  // Each boundary is tested immediately below and at the transition.
   using TB = hp20::thermal::Band;
   assert(hp20::thermal::bandForFeel(NAN) == TB::NoData);
-  assert(hp20::thermal::bandForFeel(24.9f) == TB::Cool);
-  assert(hp20::thermal::bandForFeel(25.0f) == TB::MildCool);
-  assert(hp20::thermal::bandForFeel(28.0f) == TB::Comfort);
-  assert(hp20::thermal::bandForFeel(31.0f) == TB::WarmComfort);
-  assert(hp20::thermal::bandForFeel(33.0f) == TB::SlightStuffy);
-  assert(hp20::thermal::bandForFeel(35.0f) == TB::MildStuffy);
-  assert(hp20::thermal::bandForFeel(37.0f) == TB::Stuffy);
-  assert(hp20::thermal::bandForFeel(39.0f) == TB::StuffyHot);
-  assert(hp20::thermal::bandForFeel(41.0f) == TB::Hot);
-  assert(hp20::thermal::bandForFeel(44.0f) == TB::HighHot);
-  assert(hp20::thermal::bandForFeel(47.0f) == TB::VeryHot);
-  assert(hp20::thermal::bandForFeel(50.0f) == TB::HeatLoad);
-  assert(hp20::thermal::bandForFeel(54.0f) == TB::HighLoad);
-  assert(std::abs(hp20::thermal::optimalLowFeel() - 28.0f) < 0.001f);
-  assert(std::abs(hp20::thermal::optimalHighFeel() - 33.0f) < 0.001f);
+
+  assert(hp20::thermal::bandForFeel(27.49f) == TB::Cool);
+  assert(hp20::thermal::bandForFeel(27.50f) == TB::MildCool);
+
+  assert(hp20::thermal::bandForFeel(28.99f) == TB::MildCool);
+  assert(hp20::thermal::bandForFeel(29.00f) == TB::Comfort);
+
+  assert(hp20::thermal::bandForFeel(31.99f) == TB::Comfort);
+  assert(hp20::thermal::bandForFeel(32.00f) == TB::WarmComfort);
+
+  assert(hp20::thermal::bandForFeel(34.49f) == TB::WarmComfort);
+  assert(hp20::thermal::bandForFeel(34.50f) == TB::SlightStuffy);
+
+  assert(hp20::thermal::bandForFeel(36.49f) == TB::SlightStuffy);
+  assert(hp20::thermal::bandForFeel(36.50f) == TB::MildStuffy);
+
+  assert(hp20::thermal::bandForFeel(38.49f) == TB::MildStuffy);
+  assert(hp20::thermal::bandForFeel(38.50f) == TB::Stuffy);
+
+  assert(hp20::thermal::bandForFeel(40.49f) == TB::Stuffy);
+  assert(hp20::thermal::bandForFeel(40.50f) == TB::StuffyHot);
+
+  assert(hp20::thermal::bandForFeel(42.49f) == TB::StuffyHot);
+  assert(hp20::thermal::bandForFeel(42.50f) == TB::Hot);
+
+  assert(hp20::thermal::bandForFeel(44.99f) == TB::Hot);
+  assert(hp20::thermal::bandForFeel(45.00f) == TB::HighHot);
+
+  assert(hp20::thermal::bandForFeel(47.49f) == TB::HighHot);
+  assert(hp20::thermal::bandForFeel(47.50f) == TB::VeryHot);
+
+  assert(hp20::thermal::bandForFeel(49.99f) == TB::VeryHot);
+  assert(hp20::thermal::bandForFeel(50.00f) == TB::HeatLoad);
+
+  assert(hp20::thermal::bandForFeel(53.99f) == TB::HeatLoad);
+  assert(hp20::thermal::bandForFeel(54.00f) == TB::HighLoad);
+
+  assert(std::abs(hp20::thermal::optimalLowFeel() - 29.0f) < 0.001f);
+  assert(std::abs(hp20::thermal::optimalHighFeel() - 34.5f) < 0.001f);
 
   // Firmware identity is centralized in hp20_version.h.
   // Tests validate internal consistency only; they never hard-code the current
