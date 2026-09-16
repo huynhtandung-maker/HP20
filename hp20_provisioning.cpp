@@ -36,6 +36,7 @@ bool seedFromLocalSecrets(Config& config) {
   if (!ssid.isEmpty()) {
     config.ssid = ssid;
     config.password = hp20_local::WIFI_PASSWORD;
+    rememberWifiProfile(config, config.ssid, config.password, true);
   }
   if (!host.isEmpty()) config.host = host;
   if (!token.isEmpty()) config.token = token;

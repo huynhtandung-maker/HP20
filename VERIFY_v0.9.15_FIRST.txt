@@ -1,0 +1,13 @@
+HP20 v0.9.15 - VERIFY FIRST
+===========================
+
+1. Replace/copy this project into your HP20 sketch folder.
+2. If you use local developer credentials, keep your existing local secrets.h.
+   secrets.h is intentionally NOT included in this package.
+3. Arduino IDE: Board = ESP32 Dev Module; select the normal HP20 board/port.
+4. Click Verify only. DO NOT Upload v0.9.15 by USB.
+5. Expected firmware identity: HP20 v0.9.15.
+6. If Verify succeeds, commit/push and use GitHub CI to produce the canonical binary.
+7. v0.9.14 currently on the device should then OTA to v0.9.15 through ThingsBoard External URL -> GitHub Release.
+
+Do not create the OTA package until the Arduino IDE Verify step is clean.

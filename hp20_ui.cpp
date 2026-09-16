@@ -25,7 +25,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
 #endif
 
 // =============================================================================
-// HP20 OLED UX v0.9.13
+// HP20 OLED UX v0.9.15
 // =============================================================================
 // 128x64 OLED = VERY SMALL information surface.
 // Maintenance rules:
@@ -79,6 +79,14 @@ String clipped(const String& text, uint8_t chars) {
   if (text.length() <= chars) return text;
   if (chars <= 2) return text.substring(0, chars);
   return text.substring(0, chars - 2) + "..";
+}
+
+String asciiSafe(String text) {
+  for (unsigned i = 0; i < text.length(); ++i) {
+    const uint8_t c = uint8_t(text[i]);
+    if (c < 32 || c > 126) text.setCharAt(i, '?');
+  }
+  return text;
 }
 
 // Single-line horizontal marquee.
@@ -367,6 +375,160 @@ bool otaOverlayExpired(uint32_t now) {
   return model::elapsed(now, otaOverlaySince, otaOverlayHoldMs);
 }
 
+void drawStageBar(uint8_t pct, int y = 41) {
+  if (pct > 100) pct = 100;
+  const int x = 8;
+  const int w = 112;
+  const int h = 7;
+  oled.drawFrame(x, y, w, h);
+  const int fill = int((uint16_t(w - 2) * pct) / 100U);
+  if (fill > 0) oled.drawBox(x + 1, y + 1, fill, h - 2);
+}
+
+void renderPortalOverlay(uint32_t now) {
+  if (!displayOk) return;
+
+  oled.clearBuffer();
+  title("HP20 / CAI DAT WIFI");
+
+  const PortalPhase phase = portalPhase();
+  const String ssid = portalStatusSsid();
+
+  oled.setFont(u8g2_font_6x10_tf);
+  switch (phase) {
+    case PortalPhase::Ready:
+      drawCentered(27, "SAN SANG CAI DAT");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(39, clipped(asciiSafe(String("AP: ") + portalName()), 24));
+      drawCentered(49, "KHONG CAN MAT KHAU");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(62, "TU DONG MO / 192.168.4.1");
+      break;
+
+    case PortalPhase::ScanningNetworks:
+      drawCentered(28, "DANG TIM WIFI");
+      drawStageBar(15, 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(54, "QUET MANG 2.4 GHz");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "VUI LONG CHO...");
+      break;
+
+    case PortalPhase::Saved:
+      drawCentered(28, "DA LUU CAU HINH");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(54, "CHUAN BI KET NOI");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, clipped(asciiSafe(ssid), 28));
+      break;
+
+    case PortalPhase::ConnectingWifi:
+      drawCentered(28, "DANG KET NOI WIFI");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(54, clipped(asciiSafe(ssid), 22));
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "DANG XAC THUC...");
+      break;
+
+    case PortalPhase::WifiConnected:
+      drawCentered(28, "WIFI DA KET NOI");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(53, clipped(portalStatusIp(), 22));
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "DA NHAN DIA CHI IP");
+      break;
+
+    case PortalPhase::SyncingTime:
+      drawCentered(28, "DONG BO THOI GIAN");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(54, "CHUAN BI HTTPS");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "KHONG CAN THAO TAC");
+      break;
+
+    case PortalPhase::ConnectingCloud:
+      drawCentered(28, "KET NOI CLOUD");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(54, "THINGSBOARD");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "DANG XAC NHAN...");
+      break;
+
+    case PortalPhase::Success:
+      drawCentered(28, "HOAN TAT");
+      drawStageBar(100, 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(53, "WIFI + CLOUD OK");
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "HP20 SAN SANG");
+      break;
+
+    case PortalPhase::Failed:
+      drawCentered(28, "KET NOI THAT BAI");
+      drawStageBar(portalProgress(), 38);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(53, WiFi.status() == WL_CONNECTED
+                         ? String("KIEM TRA CLOUD / TOKEN")
+                         : String("KIEM TRA MAT KHAU"));
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "MO TRANG CAI DAT DE SUA");
+      break;
+
+    case PortalPhase::Idle:
+    default:
+      drawCentered(30, "CAI DAT WIFI");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(49, clipped(String("AP: ") + portalName(), 24));
+      oled.setFont(u8g2_font_4x6_tf);
+      drawCentered(63, "192.168.4.1");
+      break;
+  }
+
+  oled.sendBuffer();
+  drawnAt = now;
+}
+
+void renderWifiReconnectOverlay(uint32_t now,
+                                const char* wifiState,
+                                const char* wifiSsid,
+                                uint8_t profileIndex,
+                                uint8_t profileCount) {
+  if (!displayOk) return;
+
+  oled.clearBuffer();
+  title("HP20 / WIFI");
+
+  oled.setFont(u8g2_font_6x10_tf);
+  drawCentered(27, "DANG KET NOI LAI");
+
+  oled.setFont(u8g2_font_5x7_tf);
+  const String ssid = wifiSsid && wifiSsid[0] ? String(wifiSsid) : String("MANG DA LUU");
+  drawCentered(40, clipped(asciiSafe(ssid), 22));
+
+  // Activity bar, not a fake completion percentage.
+  const uint8_t pulse = uint8_t((now / 90U) % 100U);
+  const uint8_t activity = pulse <= 50 ? uint8_t(pulse * 2) : uint8_t((100 - pulse) * 2);
+  drawStageBar(activity, 45);
+
+  oled.setFont(u8g2_font_4x6_tf);
+  String stateText = wifiState ? String(wifiState) : String("DANG THU LAI");
+  if (profileCount > 0) {
+    drawText(58, clipped(String("MANG ") + String(profileIndex + 1) + "/" +
+                         String(profileCount) + "  " + stateText, 30));
+  } else {
+    drawText(58, clipped(stateText, 30));
+  }
+  drawCentered(63, "GIU BOOT 3s = DOI MANG");
+
+  oled.sendBuffer();
+  drawnAt = now;
+}
+
 // Dynamic duration ensures the ONE marquee on a page can finish one full cycle.
 uint32_t pageDuration(uint8_t pageNumber, bool setupOpen,
                       const sensor::Reading& env, const char* cloudState) {
@@ -498,7 +660,14 @@ void showOtaState(uint32_t now,
   renderOtaOverlay(now);
 }
 
-void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, const char* otaState) {
+void tick(uint32_t now,
+          const sensor::Reading& env,
+          const char* cloudState,
+          const char* otaState,
+          const char* wifiState,
+          const char* wifiSsid,
+          uint8_t wifiProfileIndex,
+          uint8_t wifiProfileCount) {
   const bool setupOpen = portalActive();
   if (setupOpen && !portalWasActive) showSetupPage(now);
   portalWasActive = setupOpen;
@@ -511,6 +680,21 @@ void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, cons
   if (otaOverlayVisible) {
     if (!displayOk || !model::elapsed(now, drawnAt, 200)) return;
     renderOtaOverlay(now);
+    return;
+  }
+
+  // Setup/reconnect are full-screen product states, not a small footer message.
+  if (setupOpen) {
+    if (!displayOk || !model::elapsed(now, drawnAt, 180)) return;
+    renderPortalOverlay(now);
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!displayOk || !model::elapsed(now, drawnAt, 180)) return;
+    renderWifiReconnectOverlay(
+      now, wifiState, wifiSsid, wifiProfileIndex, wifiProfileCount
+    );
     return;
   }
 
@@ -651,7 +835,7 @@ void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, cons
 
     if (setupOpen) {
       scrollLine(25, String("AP: ") + portalName(), 24, now);
-      drawText(39, clipped(String("PW: ") + portalPassword(), 24));
+      drawText(39, "MO - KHONG MAT KHAU");
       drawText(52, "WEB: 192.168.4.1");
     } else {
       scrollLine(25,

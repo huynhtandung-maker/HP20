@@ -46,15 +46,24 @@ bool cloudReady = false;
 bool inFlight = false;
 bool authBlocked = false;
 bool remind = false;
-bool autoPortal = false;
 bool wasConnected = false;
 bool ignoreOldResult = false;
 bool buzzing = false;
 bool bootBeeping = false;
 
-uint32_t wifiAttempt = 0;
+// Wi-Fi reconnect state. HP20 remembers multiple networks in Config/NVS and
+// tries them in preferred/last-good order without asking the user again.
+bool wifiConnecting = false;
+bool wifiRetryPause = false;
+bool portalConnectionSession = false;
+uint8_t wifiProfileCursor = 0;
+uint32_t wifiAttemptSince = 0;
+uint32_t wifiRetryPauseSince = 0;
 uint32_t offlineSince = 0;
 uint32_t connectedSince = 0;
+uint32_t portalSuccessSince = 0;
+String wifiAttemptSsid;
+String wifiUiState = "CHUA CO MANG";
 uint32_t beepSince = 0;
 uint32_t lastBeep = 0;
 uint32_t bootBeepSince = 0;
@@ -174,10 +183,58 @@ void otaUxCallback(hp20::ota::State state,
   lastState = state;
 }
 
-void connectWifi() {
-  if (config.ssid.isEmpty()) return;
-  WiFi.begin(config.ssid.c_str(), config.password.c_str());
-  wifiAttempt = millis();
+void startWifiProfileAttempt(uint8_t index, uint32_t now) {
+  if (index >= config.wifiProfileCount || index >= MAX_WIFI_PROFILES) {
+    wifiConnecting = false;
+    return;
+  }
+
+  portalCancelScan();
+
+  const WifiProfile& profile = config.wifiProfiles[index];
+  if (profile.ssid.isEmpty()) {
+    wifiConnecting = false;
+    return;
+  }
+
+  wifiProfileCursor = index;
+  wifiAttemptSsid = profile.ssid;
+  wifiAttemptSince = now;
+  wifiConnecting = true;
+  wifiRetryPause = false;
+  wifiUiState = "DANG THU MANG DA LUU";
+
+  // Keep AP alive during a setup session; WiFi.begin() works in AP+STA mode.
+  if (!portalActive()) WiFi.mode(WIFI_STA);
+  WiFi.disconnect(false, false);
+  delay(25);
+  WiFi.begin(profile.ssid.c_str(), profile.password.c_str());
+
+  if (portalActive() && portalConnectionSession) {
+    portalSetStatus(
+      PortalPhase::ConnectingWifi, 30,
+      "Đang kết nối Wi-Fi",
+      String("Đang xác thực với ") + profile.ssid,
+      profile.ssid
+    );
+  }
+
+  Serial.printf("WIFI try %u/%u: %s\n",
+                unsigned(index + 1),
+                unsigned(config.wifiProfileCount),
+                profile.ssid.c_str());
+}
+
+void restartWifiCycle(uint32_t now) {
+  wifiProfileCursor = 0;
+  wifiRetryPause = false;
+  wifiConnecting = false;
+
+  if (config.wifiProfileCount == 0) {
+    wifiUiState = "CHUA CO MANG";
+    return;
+  }
+  startWifiProfileAttempt(0, now);
 }
 
 void persistCooldown(uint32_t seconds) {
@@ -188,74 +245,276 @@ void persistCooldown(uint32_t seconds) {
   }
 }
 
+void resetCloudAfterProvisionSave(uint32_t now) {
+  ignoreOldResult = inFlight;
+  authBlocked = false;
+  if (runtime.putBool("auth", false) != sizeof(bool)) {
+    cloudReady = false;
+    cloudState = "LOI LUU TRANG THAI";
+  }
+
+  failures = 0;
+  cloudState = "TB: CHO WI-FI";
+  sendMark = now;
+  waitSeconds = 5;
+  notBefore = 0;
+  runtime.putULong64("notBefore", 0);
+
+  remind = false;
+  reminder = model::Reminder();
+}
+
 void networkTick(uint32_t now) {
-  bool connected = WiFi.status() == WL_CONNECTED;
-
-  if (connected && !wasConnected) {
-    connectedSince = now;
-    autoPortal = false;
-    configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
-    ntpRetrySince = now;
-    Serial.println("TIME sync requested (NTP)");
-  }
-
-  if (!connected && wasConnected) offlineSince = now;
-  wasConnected = connected;
-
-  if (!connected && !config.ssid.isEmpty() &&
-      model::elapsed(now, wifiAttempt, settings::WIFI_RETRY_MS)) {
-    connectWifi();
-  }
-
-  if (!connected && !autoPortal && model::elapsed(now, offlineSince, 120000)) {
-    portalBegin(&config);
-    autoPortal = true;
-  }
-
-  static bool closeOnConnect = false;
   portalTick();
 
   if (portalSaved()) {
-    ignoreOldResult = inFlight;
-    authBlocked = false;
-    if (runtime.putBool("auth", false) != sizeof(bool)) {
-      cloudReady = false;
-      cloudState = "LOI LUU TRANG THAI";
-    }
+    resetCloudAfterProvisionSave(now);
+    portalConnectionSession = config.wifiProfileCount > 0;
+    portalSuccessSince = 0;
 
-    failures = 0;
-
-    // Explicit user save = onboarding/configuration intent. Allow one prompt
-    // telemetry attempt after reconnect instead of making the user wait a full
-    // telemetry interval. The normal anti-spam interval is restored before send.
-    sendMark = now;
-    waitSeconds = 5;
-    notBefore = 0;
-    runtime.putULong64("notBefore", 0);
-
-    remind = false;
-    reminder = model::Reminder();
-
-    WiFi.disconnect();
+    WiFi.disconnect(false, false);
     wasConnected = false;
     offlineSince = now;
-    connectWifi();
+    restartWifiCycle(now);
+
     if (config.otaEnabled) hp20::ota::requestCheck();
-
-    closeOnConnect = true;
-    connected = false;
   }
 
-  if (!connected && autoPortal && !portalActive()) {
-    autoPortal = false;
+  const bool connected = WiFi.status() == WL_CONNECTED;
+
+  if (connected) {
+    if (!wasConnected) {
+      connectedSince = now;
+      offlineSince = 0;
+      wifiConnecting = false;
+      wifiRetryPause = false;
+      wifiUiState = "WIFI: DA KET NOI";
+
+      // A successfully used remembered network becomes preferred/last-good.
+      const String actualSsid = WiFi.SSID();
+      const String actualPass = wifiPasswordFor(config, actualSsid);
+      if (!actualSsid.isEmpty() &&
+          rememberWifiProfile(config, actualSsid, actualPass, true)) {
+        if (!saveConfig(config))
+          Serial.println("WIFI warning: could not persist last-good profile");
+      }
+
+      configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
+      ntpRetrySince = now;
+      Serial.printf("WIFI connected: %s RSSI=%d IP=%s\n",
+                    actualSsid.c_str(), WiFi.RSSI(),
+                    WiFi.localIP().toString().c_str());
+      Serial.println("TIME sync requested (NTP)");
+
+      if (portalActive() && portalConnectionSession) {
+        portalSetStatus(
+          PortalPhase::WifiConnected, 55,
+          "Wi-Fi đã kết nối",
+          "Đã nhận địa chỉ mạng. Đang chuẩn bị kết nối cloud.",
+          actualSsid,
+          WiFi.localIP().toString()
+        );
+      }
+    }
+    wasConnected = true;
+    return;
+  }
+
+  if (wasConnected) {
+    wasConnected = false;
     offlineSince = now;
+    wifiConnecting = false;
+    wifiRetryPause = false;
+    wifiProfileCursor = 0;
+    wifiUiState = "MAT KET NOI - DANG THU LAI";
+    Serial.println("WIFI lost: automatic reconnect cycle started");
   }
 
-  if (closeOnConnect && connected && wasConnected &&
-      model::elapsed(now, connectedSince, 30000)) {
-    portalClose();
-    closeOnConnect = false;
+  if (config.wifiProfileCount == 0) {
+    wifiUiState = "CHUA CO MANG WIFI";
+    // First-use device may expose setup automatically. Once at least one network
+    // has been provisioned, ordinary Wi-Fi loss never exposes an open AP.
+    if (!portalActive()) portalBegin(&config);
+    return;
   }
+
+  if (wifiConnecting) {
+    if (!model::elapsed(now, wifiAttemptSince, 12000UL)) return;
+
+    Serial.printf("WIFI timeout: %s\n", wifiAttemptSsid.c_str());
+    wifiConnecting = false;
+
+    // During explicit provisioning, validate exactly the network the user
+    // selected. Do not silently fall back to an older remembered network and
+    // falsely report that the new credentials worked.
+    if (portalActive() && portalConnectionSession) {
+      wifiRetryPause = true;
+      wifiRetryPauseSince = now;
+      wifiUiState = "SAI MAT KHAU / KHONG TIM THAY";
+      portalSetStatus(
+        PortalPhase::Failed, 30,
+        "Chưa kết nối được Wi-Fi",
+        "Kiểm tra mật khẩu hoặc chọn mạng khác. AP cài đặt vẫn đang mở.",
+        config.ssid
+      );
+      return;
+    }
+
+    const uint8_t next = wifiProfileCursor + 1;
+    if (next < config.wifiProfileCount) {
+      startWifiProfileAttempt(next, now);
+      return;
+    }
+
+    wifiProfileCursor = 0;
+    wifiRetryPause = true;
+    wifiRetryPauseSince = now;
+    wifiUiState = "CHUA KET NOI DUOC";
+  }
+
+  if (portalActive() && portalConnectionSession &&
+      portalPhase() == PortalPhase::Failed) {
+    return;
+  }
+
+  if (wifiRetryPause) {
+    if (!model::elapsed(now, wifiRetryPauseSince, 10000UL)) return;
+    restartWifiCycle(now);
+    return;
+  }
+
+  if (!wifiConnecting) restartWifiCycle(now);
+}
+
+void syncPortalConnectionStatus(uint32_t now) {
+  if (!portalActive() || !portalConnectionSession) return;
+
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  const time_t epochNow = time(nullptr);
+  if (epochNow < 1704067200) {
+    if (portalPhase() != PortalPhase::SyncingTime) {
+      portalSetStatus(
+        PortalPhase::SyncingTime, 70,
+        "Đang đồng bộ thời gian",
+        "Bước này cần cho kết nối HTTPS an toàn.",
+        WiFi.SSID(),
+        WiFi.localIP().toString()
+      );
+    }
+    return;
+  }
+
+  if (config.host.isEmpty() || config.token.isEmpty()) {
+    if (portalPhase() != PortalPhase::Success) {
+      portalSetStatus(
+        PortalPhase::Success, 100,
+        "Wi-Fi đã sẵn sàng",
+        "Thiết bị đã kết nối mạng; ThingsBoard chưa được cấu hình.",
+        WiFi.SSID(),
+        WiFi.localIP().toString()
+      );
+      portalSuccessSince = now;
+    }
+  }
+  else if (authBlocked || strcmp(cloudState, "TB: KIEM TRA TOKEN") == 0) {
+    portalSetStatus(
+      PortalPhase::Failed, 85,
+      "Wi-Fi OK, cloud chưa xác thực",
+      "Kiểm tra Device access token trong phần Cloud.",
+      WiFi.SSID(),
+      WiFi.localIP().toString()
+    );
+    return;
+  }
+  else if (!cloudReady ||
+           strcmp(cloudState, "TB: THIEU CA TLS") == 0 ||
+           strcmp(cloudState, "TB: LOI / CHO LAI") == 0 ||
+           strcmp(cloudState, "TB: TAM DUNG 24H") == 0 ||
+           strcmp(cloudState, "TB: LOI HANG DOI") == 0) {
+    portalSetStatus(
+      PortalPhase::Failed, 85,
+      "Wi-Fi OK, cloud chưa sẵn sàng",
+      String("Trạng thái: ") + cloudState,
+      WiFi.SSID(),
+      WiFi.localIP().toString()
+    );
+    return;
+  }
+  else if (strcmp(cloudState, "TB: DA NHAN") == 0) {
+    if (portalPhase() != PortalPhase::Success) {
+      portalSetStatus(
+        PortalPhase::Success, 100,
+        "Hoàn tất kết nối",
+        "Wi-Fi và ThingsBoard đều đã sẵn sàng.",
+        WiFi.SSID(),
+        WiFi.localIP().toString()
+      );
+      portalSuccessSince = now;
+    }
+  }
+  else {
+    if (portalPhase() != PortalPhase::ConnectingCloud) {
+      portalSetStatus(
+        PortalPhase::ConnectingCloud, 86,
+        "Đang kết nối ThingsBoard",
+        "Wi-Fi đã ổn định. Đang xác nhận cloud.",
+        WiFi.SSID(),
+        WiFi.localIP().toString()
+      );
+    }
+    return;
+  }
+
+  // Leave enough time for the phone to render SUCCESS before the AP disappears.
+  if (portalPhase() == PortalPhase::Success &&
+      portalSuccessSince != 0 &&
+      model::elapsed(now, portalSuccessSince, 12000UL)) {
+    portalClose();
+    portalConnectionSession = false;
+    portalSuccessSince = 0;
+  }
+}
+
+void portalUxBuzzerTick() {
+  static PortalPhase lastPhase = PortalPhase::Idle;
+  const PortalPhase phase = portalActive() ? portalPhase() : PortalPhase::Idle;
+  if (phase == lastPhase) return;
+
+  // Provisioning owns the buzzer while its state changes.
+  buzzing = false;
+  bootBeeping = false;
+  buzzerOff();
+
+  switch (phase) {
+    case PortalPhase::Ready:
+      otaBuzzerPulse(45, 40);
+      otaBuzzerPulse(70);
+      break;
+    case PortalPhase::ScanningNetworks:
+      if (lastPhase == PortalPhase::Idle) {
+        otaBuzzerPulse(45, 40);
+        otaBuzzerPulse(70);
+      }
+      break;
+    case PortalPhase::ConnectingWifi:
+      otaBuzzerPulse(55);
+      break;
+    case PortalPhase::Success:
+      otaBuzzerPulse(45, 45);
+      otaBuzzerPulse(45, 45);
+      otaBuzzerPulse(120);
+      break;
+    case PortalPhase::Failed:
+      otaBuzzerPulse(80, 55);
+      otaBuzzerPulse(80, 55);
+      otaBuzzerPulse(110);
+      break;
+    default:
+      break;
+  }
+
+  lastPhase = phase;
 }
 
 void cloudTick(uint32_t now) {
@@ -323,7 +582,8 @@ void cloudTick(uint32_t now) {
     // configTime() is asynchronous. Normally one request is enough, but some
     // routers/DNS paths drop the first NTP exchange. Re-arm SNTP periodically
     // instead of leaving the device in a stale wait state forever.
-    if (model::elapsed(now, ntpRetrySince, 30000)) {
+    const uint32_t ntpRetryMs = portalConnectionSession ? 10000UL : 30000UL;
+    if (model::elapsed(now, ntpRetrySince, ntpRetryMs)) {
       configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
       ntpRetrySince = now;
       Serial.println("TIME sync retry (NTP)");
@@ -388,18 +648,23 @@ void controlsTick(uint32_t now) {
 
   const hp20::thermal::State& th = hp20::thermal::state();
 
-  // Existing user-selected reminder behavior remains unchanged.
-  remind = reminder.update(
-    now,
-    hp20::sensor::fresh(now) ? th.feelRaw : NAN,
-    config.reminder,
-    config.threshold
-  );
+  // Thermal reminders are suspended while setup/OTA owns the user's attention.
+  if (portalActive() || hp20::ota::busy()) {
+    remind = false;
+    reminder = model::Reminder();
+  } else {
+    remind = reminder.update(
+      now,
+      hp20::sensor::fresh(now) ? th.feelRaw : NAN,
+      config.reminder,
+      config.threshold
+    );
+  }
 
-  // External GREEN LED = human thermal-comfort indicator.
-  // More green presence means more comfort; less green means comfort is falling.
-  // Blink timing is centralized in hp20_indicator.cpp so the orchestrator stays clean.
-  const bool greenOn = hp20::indicator::greenLedOn(th.band, now);
+  // During maintenance/setup the external green comfort signal is intentionally
+  // suppressed so one LED never communicates two meanings at once.
+  const bool greenOn = !portalActive() && !hp20::ota::busy() &&
+                       hp20::indicator::greenLedOn(th.band, now);
   digitalWrite(settings::LED_PIN, greenOn ? HIGH : LOW);
 
   if (settings::BOARD_LED_ENABLED) {
@@ -470,9 +735,8 @@ void serialTick(uint32_t now) {
 
           if (portalActive()) {
             Serial.printf(
-              "SETUP AP=%s TEMP_PASSWORD=%s URL=http://192.168.4.1\n",
-              portalName().c_str(),
-              portalPassword().c_str()
+              "SETUP AP=%s OPEN_AP=YES URL=http://192.168.4.1\n",
+              portalName().c_str()
             );
           } else {
             Serial.println("SETUP failed: could not start AP");
@@ -578,11 +842,12 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
 
-  connectWifi();
-
-  if (config.ssid.isEmpty()) {
+  normalizeWifiProfiles(config);
+  if (config.wifiProfileCount > 0) {
+    restartWifiCycle(millis());
+  } else {
+    // First-use experience: open captive setup immediately. No AP password.
     portalBegin(&config);
-    autoPortal = true;
   }
 }
 
@@ -608,8 +873,19 @@ void loop() {
   controlsTick(now);
   networkTick(now);
   cloudTick(now);
+  syncPortalConnectionStatus(now);
+  portalUxBuzzerTick();
   hp20::ota::tick(now, config, cloudReady && !inFlight && !portalActive());
-  hp20::ui::tick(now, hp20::sensor::state(), cloudState, hp20::ota::label());
+  hp20::ui::tick(
+    now,
+    hp20::sensor::state(),
+    cloudState,
+    hp20::ota::label(),
+    wifiUiState.c_str(),
+    wifiAttemptSsid.c_str(),
+    wifiProfileCursor,
+    config.wifiProfileCount
+  );
 
   if (model::elapsed(now, statusSince, settings::SERIAL_STATUS_MS)) {
     statusSince = now;
@@ -618,7 +894,7 @@ void loop() {
     const hp20::thermal::State& th = hp20::thermal::state();
 
     Serial.printf(
-      "STATUS up=%lus sensor=%s Traw=%.1f Tcal=%.1f RHraw=%.1f RHcal=%.1f HI=%.1f UI=%.1f band=%s green=%u%% trend=%s d10=%.1f wifi=%s portal=%s page=%u cloud=%s ca=%s epoch=%lld ota=%s otaPct=%u wait>=%lus\n",
+      "STATUS up=%lus sensor=%s Traw=%.1f Tcal=%.1f RHraw=%.1f RHcal=%.1f HI=%.1f UI=%.1f band=%s green=%u%% trend=%s d10=%.1f wifi=%s wifiState=%s profiles=%u portal=%s page=%u cloud=%s ca=%s epoch=%lld ota=%s otaPct=%u wait>=%lus\n",
       (unsigned long)(now / 1000),
       hp20::sensor::fresh(now) ? "OK" : "INVALID",
       env.rawTempC,
@@ -632,6 +908,8 @@ void loop() {
       hp20::trend::label(),
       hp20::trend::delta(),
       WiFi.status() == WL_CONNECTED ? "OK" : "OFFLINE",
+      wifiUiState.c_str(),
+      unsigned(config.wifiProfileCount),
       portalActive() ? "OPEN" : "CLOSED",
       unsigned(hp20::ui::page() + 1),
       cloudState,

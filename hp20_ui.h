@@ -20,7 +20,14 @@ constexpr uint8_t PAGE_COUNT = 7;
 constexpr uint8_t SETUP_PAGE = 6;
 
 void begin();
-void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, const char* otaState);
+void tick(uint32_t now,
+          const sensor::Reading& env,
+          const char* cloudState,
+          const char* otaState,
+          const char* wifiState,
+          const char* wifiSsid,
+          uint8_t wifiProfileIndex,
+          uint8_t wifiProfileCount);
 
 void nextPage(uint32_t now);
 void showSetupPage(uint32_t now);

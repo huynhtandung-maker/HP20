@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.9.15 — Wi‑Fi Provisioning UX + External URL OTA acceptance
+
+- Nâng Wi‑Fi từ cấu hình một mạng thành tối đa 5 mạng đã nhớ trong NVS; mạng kết nối thành công gần nhất được ưu tiên.
+- Khi mất Wi‑Fi, HP20 tự thử lại các mạng đã nhớ; không tự mở AP cấu hình chỉ vì mất mạng tạm thời.
+- Mạng setup HP20 không còn mật khẩu ngẫu nhiên; setup chỉ mở khi thiết bị chưa provision hoặc người dùng giữ BOOT 3 giây.
+- Bổ sung captive-portal probe cho Android / iOS / macOS / Windows để trình cấu hình tự bật trong phần lớn trường hợp; `192.168.4.1` chỉ còn là fallback.
+- Portal mới mobile-first theo palette kem nóng / vàng / cam: danh sách Wi‑Fi dạng card, RSSI + mức tín hiệu, gợi ý mạng mạnh, dấu mạng đã nhớ, show/hide password.
+- Bổ sung quản lý mạng đã nhớ: quên từng mạng hoặc reset toàn bộ Wi‑Fi.
+- Sau `Lưu & kết nối`, web hiển thị tiến trình thật: lưu → Wi‑Fi → IP → NTP → ThingsBoard → hoàn tất / lỗi; không dùng trang chờ im lặng.
+- OLED chuyển sang full-screen Wi‑Fi/setup state; còi phản hồi khi vào setup, bắt đầu kết nối, thành công và thất bại.
+- Giữ nguyên OTA UX v0.9.14 và manual HTTPS cross-host redirect hardening để dùng v0.9.14 → v0.9.15 làm bài test OTA qua GitHub External URL.
+- Version single source of truth nâng lên `0.9.15`.
+
+
 ## v0.9.5 FIX2 — Built-in ThingsBoard Cloud CA
 
 - Bundled ISRG Root X1 for `thingsboard.cloud`; no PEM paste required for normal onboarding.

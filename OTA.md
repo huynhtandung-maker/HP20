@@ -1,5 +1,30 @@
 # HP20 OTA · ThingsBoard HTTPS + Dashboard Command
 
+## v0.9.15 acceptance — GitHub External URL, no duplicate binary
+
+v0.9.14 đã có manual HTTPS cross-host redirect handling cho GitHub Release.
+v0.9.15 dùng chính cơ chế này làm acceptance path:
+
+```text
+GitHub Actions
+→ GitHub Release
+→ ThingsBoard firmware package (Use external URL)
+→ Dashboard RPC updateFirmware
+→ HP20 v0.9.14 tải SHA256SUMS + binary trực tiếp từ GitHub
+→ SHA-256 verify
+→ inactive OTA partition
+→ reboot v0.9.15
+```
+
+URL SH1106 chuẩn:
+
+```text
+https://github.com/huynhtandung-maker/HP20/releases/download/v0.9.15/HP20-v0.9.15-SH1106.bin
+```
+
+Không upload `.bin` lần hai vào ThingsBoard trong bài test này.
+
+
 ## Mục tiêu
 
 HP20 v0.9.7 là baseline đã kiểm chứng OTA end-to-end. Nhánh `feature/v0.9.8-device-management` bổ sung lớp **device management** để người vận hành có thể kích hoạt kiểm tra/cập nhật firmware trực tiếp từ ThingsBoard Dashboard thay vì phải mở Serial Monitor và gõ `OTA`.

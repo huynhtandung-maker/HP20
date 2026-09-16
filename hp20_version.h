@@ -19,10 +19,10 @@ namespace hp20 { namespace version {
 
 constexpr uint8_t MAJOR = 0;
 constexpr uint8_t MINOR = 9;
-constexpr uint8_t PATCH = 14;
+constexpr uint8_t PATCH = 15;
 
 constexpr const char* TITLE = "HP20";   // ThingsBoard OTA package title must match.
-constexpr const char* STRING = "0.9.14";
-constexpr const char* TAG = "v0.9.14";
+constexpr const char* STRING = "0.9.15";
+constexpr const char* TAG = "v0.9.15";
 
 } }  // namespace hp20::version
