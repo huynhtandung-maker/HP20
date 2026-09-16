@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <string>
 
 int main() {
   // Core Heat Index formula: NWS reference neighborhood.
@@ -41,8 +42,15 @@ int main() {
   assert(std::abs(hp20::thermal::optimalHighFeel() - 33.0f) < 0.001f);
 
   // Firmware identity is centralized in hp20_version.h.
-  static_assert(hp20::version::MAJOR == 0, "Unexpected major version");
-  assert(std::string(hp20::version::STRING) == "0.9.8");
+  // Tests validate internal consistency only; they never hard-code the current
+  // release number, otherwise the test itself becomes a second version source.
+  const std::string expectedVersion =
+      std::to_string(hp20::version::MAJOR) + "." +
+      std::to_string(hp20::version::MINOR) + "." +
+      std::to_string(hp20::version::PATCH);
+  assert(std::string(hp20::version::STRING) == expectedVersion);
+  assert(std::string(hp20::version::TAG) == std::string("v") + expectedVersion);
+  assert(std::string(hp20::version::TITLE) == "HP20");
 
   // Green LED semantics: Comfort is solid green; hotter bands progressively
   // reduce green presence. This is a comfort signal, not an alarm strobe.
@@ -172,5 +180,6 @@ int main() {
   }
   assert(model::remainingSeconds(900000, 0, 900, epoch - 3600, epoch + 900) == 4500);
 
-  std::cout << "HP20 v0.9.8 core/thermal/indicator/trend/button/cooldown tests passed\n";
+  std::cout << "HP20 v" << hp20::version::STRING
+            << " core/thermal/indicator/trend/button/cooldown tests passed\n";
 }
