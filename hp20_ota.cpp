@@ -31,6 +31,7 @@ constexpr uint32_t FIRST_CHECK_DELAY_MS = 90000UL;
 constexpr uint32_t HTTP_TIMEOUT_MS = 12000UL;
 constexpr size_t DOWNLOAD_BUFFER = 2048;
 constexpr size_t MAX_FIRMWARE_BYTES = 4UL * 1024UL * 1024UL;
+constexpr size_t MAX_MANIFEST_BYTES = 16UL * 1024UL;
 
 constexpr uint32_t RPC_POLL_INTERVAL_MS = 10000UL;
 constexpr uint32_t RPC_SERVER_WAIT_MS = 300UL;
@@ -334,7 +335,7 @@ bool parseGitHubReleaseUrl(const String& url, GitHubReleaseRef& out) {
          !out.tag.isEmpty() && !out.asset.isEmpty();
 }
 
-bool resolveGitHubMetadata(Target& target) {
+bool resolveGitHubManifest(Target& target) {
   GitHubReleaseRef ref;
   if (!parseGitHubReleaseUrl(target.url, ref)) {
     setError("FW URL KHONG PHAI GITHUB RELEASE");
@@ -347,82 +348,91 @@ bool resolveGitHubMetadata(Target& target) {
     return false;
   }
 
+  // Integrity metadata comes from the release manifest itself.
+  // This avoids a separate dependency on api.github.com while preserving
+  // end-to-end SHA-256 verification of the exact release asset.
+  const String manifestUrl =
+      "https://github.com/" + ref.owner + "/" + ref.repo +
+      "/releases/download/" + ref.tag + "/SHA256SUMS.txt";
+
   WiFiClientSecure client;
   HTTPClient http;
-  const String apiUrl = "https://api.github.com/repos/" +
-                        urlEncode(ref.owner) + "/" + urlEncode(ref.repo) +
-                        "/releases/tags/" + urlEncode(ref.tag);
-  if (!openPublicSecure(http, client, apiUrl)) return false;
-
-  http.addHeader("Accept", "application/vnd.github+json");
-  http.addHeader("X-GitHub-Api-Version", "2022-11-28");
-  http.addHeader("User-Agent", "HP20-OTA");
+  if (!openPublicSecure(http, client, manifestUrl)) return false;
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     http.end();
-    setError(String("GITHUB META HTTP ") + code);
+    setError(String("GITHUB SUMS HTTP ") + code);
     return false;
   }
 
-  StaticJsonDocument<256> filter;
-  filter["assets"][0]["name"] = true;
-  filter["assets"][0]["size"] = true;
-  filter["assets"][0]["digest"] = true;
-  filter["assets"][0]["browser_download_url"] = true;
+  const int contentLength = http.getSize();
+  if (contentLength > 0 && size_t(contentLength) > MAX_MANIFEST_BYTES) {
+    http.end();
+    setError("GITHUB SUMS QUA LON");
+    return false;
+  }
 
-  DynamicJsonDocument doc(4096);
-  DeserializationError err = deserializeJson(
-      doc, *http.getStreamPtr(), DeserializationOption::Filter(filter));
+  String manifest = http.getString();
   http.end();
 
-  if (err) {
-    setError("GITHUB META JSON");
+  if (manifest.isEmpty()) {
+    setError("GITHUB SUMS RONG");
+    return false;
+  }
+  if (manifest.length() > MAX_MANIFEST_BYTES) {
+    setError("GITHUB SUMS QUA LON");
     return false;
   }
 
-  JsonArray assets = doc["assets"].as<JsonArray>();
-  for (JsonObject asset : assets) {
-    const String name = asset["name"] | "";
-    if (name != ref.asset) continue;
+  int cursor = 0;
+  while (cursor < int(manifest.length())) {
+    int lineEnd = manifest.indexOf('\n', cursor);
+    if (lineEnd < 0) lineEnd = manifest.length();
 
-    const String browserUrl = asset["browser_download_url"] | "";
-    if (!browserUrl.isEmpty() && browserUrl != target.url) {
-      setError("GITHUB ASSET URL KHONG KHOP");
-      return false;
+    String line = manifest.substring(cursor, lineEnd);
+    line.trim();
+
+    if (line.length() >= 64) {
+      String sha = line.substring(0, 64);
+      if (validHexSha256(sha)) {
+        String filename = line.substring(64);
+        filename.trim();
+
+        // Accept both common sha256sum formats:
+        // <sha>  filename
+        // <sha> *filename
+        if (filename.startsWith("*")) {
+          filename.remove(0, 1);
+          filename.trim();
+        }
+
+        if (filename == ref.asset) {
+          sha.toLowerCase();
+          target.algorithm = "SHA256";
+          target.checksum = sha;
+
+          // For external releases, size is established from the actual binary
+          // HTTP response rather than duplicated in ThingsBoard metadata.
+          target.size = 0;
+
+          Serial.printf("OTA manifest OK: %s sha256=%s\n",
+                        ref.asset.c_str(), target.checksum.c_str());
+          return true;
+        }
+      }
     }
 
-    const unsigned long apiSize = asset["size"] | 0UL;
-    const String digest = asset["digest"] | "";
-    if (apiSize < 65536UL || apiSize > MAX_FIRMWARE_BYTES) {
-      setError("GITHUB FW SIZE SAI");
-      return false;
-    }
-    if (!digest.startsWith("sha256:")) {
-      setError("GITHUB THIEU SHA256");
-      return false;
-    }
-
-    String sha = digest.substring(7);
-    sha.toLowerCase();
-    if (!validHexSha256(sha)) {
-      setError("GITHUB SHA256 SAI");
-      return false;
-    }
-
-    target.size = size_t(apiSize);
-    target.algorithm = "SHA256";
-    target.checksum = sha;
-    return true;
+    cursor = lineEnd + 1;
   }
 
-  setError("KHONG TIM THAY GITHUB ASSET");
+  setError("KHONG TIM THAY SHA256");
   return false;
 }
 
 bool prepareTarget(Target& target) {
   if (!target.url.isEmpty()) {
-    return resolveGitHubMetadata(target);
+    return resolveGitHubManifest(target);
   }
 
   // Backward compatibility for packages whose binary is stored in ThingsBoard.
@@ -458,7 +468,10 @@ bool downloadAndApply(const Config& config, Target target) {
     currentState = State::UpToDate;
     return true;
   }
-  if (!prepareTarget(target)) return false;
+  if (!prepareTarget(target)) {
+    reportState(config, "FAILED", errorText);
+    return false;
+  }
 
   currentState = State::UpdateAvailable;
   reportState(config, "DOWNLOADING");
@@ -494,9 +507,39 @@ bool downloadAndApply(const Config& config, Target target) {
   }
 
   const int contentLength = http.getSize();
-  if (contentLength > 0 && size_t(contentLength) != target.size) {
+
+  if (!target.url.isEmpty()) {
+    // External GitHub release: the actual binary response is authoritative
+    // for size. SHA-256 remains authoritative for content integrity.
+    if (contentLength <= 0) {
+      http.end();
+      setError("FW KHONG CO CONTENT LENGTH");
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
+
+    if (size_t(contentLength) < 65536UL ||
+        size_t(contentLength) > MAX_FIRMWARE_BYTES) {
+      http.end();
+      setError("FW CONTENT LENGTH SAI");
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
+
+    target.size = size_t(contentLength);
+  } else {
+    // Backward compatibility for ThingsBoard-hosted binary packages.
+    if (contentLength > 0 && size_t(contentLength) != target.size) {
+      http.end();
+      setError("FW CONTENT LENGTH KHONG KHOP");
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
+  }
+
+  if (target.size < 65536UL || target.size > MAX_FIRMWARE_BYTES) {
     http.end();
-    setError("FW CONTENT LENGTH KHONG KHOP");
+    setError("FW SIZE SAI");
     reportState(config, "FAILED", errorText);
     return false;
   }
