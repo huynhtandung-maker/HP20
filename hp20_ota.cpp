@@ -1,5 +1,6 @@
 #include "hp20_ota.h"
 #include "thingsboard_ca.h"
+#include "github_ca.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
@@ -16,13 +17,6 @@
 namespace hp20 { namespace ota {
 namespace {
 
-// -----------------------------------------------------------------------------
-// mbedTLS SHA-256 compatibility layer
-// -----------------------------------------------------------------------------
-// Arduino-ESP32 3.x ships mbedTLS 3.x, where the public SHA-256 API uses
-// mbedtls_sha256_starts/update/finish (without the old _ret suffix).
-// Older Arduino-ESP32 / mbedTLS 2.x builds may still expose the _ret names.
-// Keep this compatibility in ONE place so the OTA logic below stays portable.
 #if defined(MBEDTLS_VERSION_MAJOR) && (MBEDTLS_VERSION_MAJOR >= 3)
   #define HP20_SHA256_STARTS(ctx, is224) mbedtls_sha256_starts((ctx), (is224))
   #define HP20_SHA256_UPDATE(ctx, input, len) mbedtls_sha256_update((ctx), (input), (len))
@@ -38,10 +32,6 @@ constexpr uint32_t HTTP_TIMEOUT_MS = 12000UL;
 constexpr size_t DOWNLOAD_BUFFER = 2048;
 constexpr size_t MAX_FIRMWARE_BYTES = 4UL * 1024UL * 1024UL;
 
-// ThingsBoard HTTP server-side RPC is long-poll based. HP20 keeps the polling
-// deliberately modest so a dashboard command feels responsive without turning
-// the device into a high-frequency cloud poller. The RPC path is only active
-// while OTA is explicitly enabled in the setup portal.
 constexpr uint32_t RPC_POLL_INTERVAL_MS = 10000UL;
 constexpr uint32_t RPC_SERVER_WAIT_MS = 300UL;
 constexpr uint32_t RPC_HTTP_TIMEOUT_MS = 2500UL;
@@ -58,9 +48,17 @@ String errorText;
 struct Target {
   String title;
   String version;
+  String url;
   String checksum;
   String algorithm;
   size_t size = 0;
+};
+
+struct GitHubReleaseRef {
+  String owner;
+  String repo;
+  String tag;
+  String asset;
 };
 
 String urlEncode(const String& value) {
@@ -129,38 +127,44 @@ void setError(const String& message) {
   Serial.printf("OTA error: %s\n", errorText.c_str());
 }
 
-bool openSecure(HTTPClient& http, WiFiClientSecure& client,
-                const Config& config, const String& url) {
+bool openThingsBoardSecure(HTTPClient& http, WiFiClientSecure& client,
+                           const Config& config, const String& url,
+                           bool quiet = false) {
   const char* ca = hp20::tbtrust::effectiveCa(config);
   if (!ca) {
-    setError("THIEU CA TLS");
+    if (!quiet) setError("THIEU CA TLS");
     return false;
   }
+
   client.setCACert(ca);
   client.setHandshakeTimeout(8);
-  http.setConnectTimeout(7000);
-  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(quiet ? 4000 : 7000);
+  http.setTimeout(quiet ? RPC_HTTP_TIMEOUT_MS : HTTP_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+
   if (!http.begin(client, url)) {
-    setError("KHONG MO HTTPS");
+    if (!quiet) setError("KHONG MO HTTPS");
     return false;
   }
   return true;
 }
 
-// Remote-command polling must not turn a temporary command-channel problem into
-// an OTA failure. Therefore this helper is intentionally quiet: OTA state is
-// untouched if an RPC poll cannot connect.
-bool openSecureQuiet(HTTPClient& http, WiFiClientSecure& client,
-                     const Config& config, const String& url) {
-  const char* ca = hp20::tbtrust::effectiveCa(config);
-  if (!ca) return false;
-  client.setCACert(ca);
-  client.setHandshakeTimeout(8);
-  http.setConnectTimeout(4000);
-  http.setTimeout(RPC_HTTP_TIMEOUT_MS);
-  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-  return http.begin(client, url);
+bool openPublicSecure(HTTPClient& http, WiFiClientSecure& client,
+                      const String& url) {
+  // GitHub public HTTPS uses its own trust domain, separate from ThingsBoard.
+  // Arduino-ESP32 3.3.11 does not expose useBuiltinCACertBundle(), so HP20
+  // verifies GitHub with an explicit trusted root CA.
+  client.setCACert(hp20::ghtrust::GITHUB_ROOT_CA);
+  client.setHandshakeTimeout(10);
+  http.setConnectTimeout(8000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+  if (!http.begin(client, url)) {
+    setError("KHONG MO PUBLIC HTTPS");
+    return false;
+  }
+  return true;
 }
 
 bool postAttributes(const Config& config, const String& json) {
@@ -171,7 +175,7 @@ bool postAttributes(const Config& config, const String& json) {
   HTTPClient http;
   const String url = "https://" + config.host + "/api/v1/" +
                      config.token + "/attributes";
-  if (!openSecure(http, client, config, url)) return false;
+  if (!openThingsBoardSecure(http, client, config, url)) return false;
   http.addHeader("Content-Type", "application/json");
   const int code = http.POST(json);
   http.end();
@@ -184,7 +188,7 @@ void reportState(const Config& config, const char* fwState, const String& error 
   doc["current_fw_version"] = hp20::version::STRING;
   doc["fw_state"] = fwState;
   doc["fw_progress"] = progress;
-  doc["fw_error"] = error; // Empty string intentionally clears a stale error.
+  doc["fw_error"] = error;
   String body;
   serializeJson(doc, body);
   postAttributes(config, body);
@@ -195,7 +199,7 @@ bool postRpcReply(const Config& config, long requestId, const String& json) {
   HTTPClient http;
   const String url = "https://" + config.host + "/api/v1/" +
                      config.token + "/rpc/" + String(requestId);
-  if (!openSecureQuiet(http, client, config, url)) return false;
+  if (!openThingsBoardSecure(http, client, config, url, true)) return false;
   http.addHeader("Content-Type", "application/json");
   const int code = http.POST(json);
   http.end();
@@ -225,16 +229,14 @@ bool handleRpcCommand(const Config& config, const String& body) {
       reply["message"] = "HP20 will check the assigned ThingsBoard firmware now";
       Serial.printf("TB RPC %s accepted (id=%ld)\n", method.c_str(), requestId);
     }
-  }
-  else if (method == "getDeviceInfo") {
+  } else if (method == "getDeviceInfo") {
     reply["accepted"] = true;
     reply["title"] = hp20::version::TITLE;
     reply["version"] = hp20::version::STRING;
     reply["otaState"] = label();
     reply["progress"] = progress;
     reply["lastError"] = errorText;
-  }
-  else {
+  } else {
     reply["accepted"] = false;
     reply["result"] = "UNSUPPORTED_METHOD";
     reply["method"] = method;
@@ -254,7 +256,7 @@ void pollRpc(uint32_t now, const Config& config) {
   HTTPClient http;
   const String url = "https://" + config.host + "/api/v1/" + config.token +
                      "/rpc?timeout=" + String(RPC_SERVER_WAIT_MS);
-  if (!openSecureQuiet(http, client, config, url)) return;
+  if (!openThingsBoardSecure(http, client, config, url, true)) return;
 
   const int code = http.GET();
   if (code == HTTP_CODE_OK) {
@@ -263,9 +265,6 @@ void pollRpc(uint32_t now, const Config& config) {
     if (!body.isEmpty()) handleRpcCommand(config, body);
     return;
   }
-
-  // A timeout/no-command response is normal for HTTP RPC polling. Do not alter
-  // OTA state and do not spam Serial for routine empty polls.
   http.end();
 }
 
@@ -273,9 +272,9 @@ bool fetchTarget(const Config& config, Target& target) {
   WiFiClientSecure client;
   HTTPClient http;
   String url = "https://" + config.host + "/api/v1/" + config.token +
-               "/attributes?sharedKeys=fw_title,fw_version,fw_checksum,"
+               "/attributes?sharedKeys=fw_title,fw_version,fw_url,fw_checksum,"
                "fw_checksum_algorithm,fw_size";
-  if (!openSecure(http, client, config, url)) return false;
+  if (!openThingsBoardSecure(http, client, config, url)) return false;
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
@@ -287,7 +286,7 @@ bool fetchTarget(const Config& config, Target& target) {
   String body = http.getString();
   http.end();
 
-  DynamicJsonDocument doc(1536);
+  DynamicJsonDocument doc(2048);
   if (deserializeJson(doc, body)) {
     setError("CHECK JSON");
     return false;
@@ -295,16 +294,147 @@ bool fetchTarget(const Config& config, Target& target) {
 
   JsonObject shared = doc["shared"].as<JsonObject>();
   if (shared.isNull()) {
-    // No assigned firmware is not an error.
     target = Target{};
     return true;
   }
 
   target.title = shared["fw_title"] | "";
   target.version = shared["fw_version"] | "";
+  target.url = shared["fw_url"] | "";
   target.checksum = shared["fw_checksum"] | "";
   target.algorithm = shared["fw_checksum_algorithm"] | "";
   target.size = shared["fw_size"] | 0UL;
+  return true;
+}
+
+bool parseGitHubReleaseUrl(const String& url, GitHubReleaseRef& out) {
+  const String prefix = "https://github.com/";
+  if (!url.startsWith(prefix)) return false;
+
+  String rest = url.substring(prefix.length());
+  const int ownerEnd = rest.indexOf('/');
+  if (ownerEnd <= 0) return false;
+  const int repoEnd = rest.indexOf('/', ownerEnd + 1);
+  if (repoEnd <= ownerEnd + 1) return false;
+
+  out.owner = rest.substring(0, ownerEnd);
+  out.repo = rest.substring(ownerEnd + 1, repoEnd);
+
+  const String marker = "/releases/download/";
+  String suffix = rest.substring(repoEnd);
+  if (!suffix.startsWith(marker)) return false;
+
+  String releasePart = suffix.substring(marker.length());
+  const int tagEnd = releasePart.indexOf('/');
+  if (tagEnd <= 0 || tagEnd >= int(releasePart.length()) - 1) return false;
+
+  out.tag = releasePart.substring(0, tagEnd);
+  out.asset = releasePart.substring(tagEnd + 1);
+  return !out.owner.isEmpty() && !out.repo.isEmpty() &&
+         !out.tag.isEmpty() && !out.asset.isEmpty();
+}
+
+bool resolveGitHubMetadata(Target& target) {
+  GitHubReleaseRef ref;
+  if (!parseGitHubReleaseUrl(target.url, ref)) {
+    setError("FW URL KHONG PHAI GITHUB RELEASE");
+    return false;
+  }
+
+  const String expectedTag = "v" + target.version;
+  if (ref.tag != expectedTag && ref.tag != target.version) {
+    setError("FW URL VERSION KHONG KHOP");
+    return false;
+  }
+
+  WiFiClientSecure client;
+  HTTPClient http;
+  const String apiUrl = "https://api.github.com/repos/" +
+                        urlEncode(ref.owner) + "/" + urlEncode(ref.repo) +
+                        "/releases/tags/" + urlEncode(ref.tag);
+  if (!openPublicSecure(http, client, apiUrl)) return false;
+
+  http.addHeader("Accept", "application/vnd.github+json");
+  http.addHeader("X-GitHub-Api-Version", "2022-11-28");
+  http.addHeader("User-Agent", "HP20-OTA");
+
+  const int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    setError(String("GITHUB META HTTP ") + code);
+    return false;
+  }
+
+  StaticJsonDocument<256> filter;
+  filter["assets"][0]["name"] = true;
+  filter["assets"][0]["size"] = true;
+  filter["assets"][0]["digest"] = true;
+  filter["assets"][0]["browser_download_url"] = true;
+
+  DynamicJsonDocument doc(4096);
+  DeserializationError err = deserializeJson(
+      doc, *http.getStreamPtr(), DeserializationOption::Filter(filter));
+  http.end();
+
+  if (err) {
+    setError("GITHUB META JSON");
+    return false;
+  }
+
+  JsonArray assets = doc["assets"].as<JsonArray>();
+  for (JsonObject asset : assets) {
+    const String name = asset["name"] | "";
+    if (name != ref.asset) continue;
+
+    const String browserUrl = asset["browser_download_url"] | "";
+    if (!browserUrl.isEmpty() && browserUrl != target.url) {
+      setError("GITHUB ASSET URL KHONG KHOP");
+      return false;
+    }
+
+    const unsigned long apiSize = asset["size"] | 0UL;
+    const String digest = asset["digest"] | "";
+    if (apiSize < 65536UL || apiSize > MAX_FIRMWARE_BYTES) {
+      setError("GITHUB FW SIZE SAI");
+      return false;
+    }
+    if (!digest.startsWith("sha256:")) {
+      setError("GITHUB THIEU SHA256");
+      return false;
+    }
+
+    String sha = digest.substring(7);
+    sha.toLowerCase();
+    if (!validHexSha256(sha)) {
+      setError("GITHUB SHA256 SAI");
+      return false;
+    }
+
+    target.size = size_t(apiSize);
+    target.algorithm = "SHA256";
+    target.checksum = sha;
+    return true;
+  }
+
+  setError("KHONG TIM THAY GITHUB ASSET");
+  return false;
+}
+
+bool prepareTarget(Target& target) {
+  if (!target.url.isEmpty()) {
+    return resolveGitHubMetadata(target);
+  }
+
+  // Backward compatibility for packages whose binary is stored in ThingsBoard.
+  if (!target.algorithm.equalsIgnoreCase("SHA256") ||
+      !validHexSha256(target.checksum)) {
+    setError("CAN SHA256");
+    return false;
+  }
+  if (target.size < 65536 || target.size > MAX_FIRMWARE_BYTES) {
+    setError("FW SIZE SAI");
+    return false;
+  }
   return true;
 }
 
@@ -319,7 +449,7 @@ String sha256Hex(const uint8_t hash[32]) {
   return String(out);
 }
 
-bool downloadAndApply(const Config& config, const Target& target) {
+bool downloadAndApply(const Config& config, Target target) {
   if (target.title != hp20::version::TITLE) {
     setError("SAI FW TITLE");
     return false;
@@ -328,14 +458,7 @@ bool downloadAndApply(const Config& config, const Target& target) {
     currentState = State::UpToDate;
     return true;
   }
-  if (!target.algorithm.equalsIgnoreCase("SHA256") || !validHexSha256(target.checksum)) {
-    setError("CAN SHA256");
-    return false;
-  }
-  if (target.size < 65536 || target.size > MAX_FIRMWARE_BYTES) {
-    setError("FW SIZE SAI");
-    return false;
-  }
+  if (!prepareTarget(target)) return false;
 
   currentState = State::UpdateAvailable;
   reportState(config, "DOWNLOADING");
@@ -344,15 +467,36 @@ bool downloadAndApply(const Config& config, const Target& target) {
 
   WiFiClientSecure client;
   HTTPClient http;
-  const String url = "https://" + config.host + "/api/v1/" + config.token +
-                     "/firmware?title=" + urlEncode(target.title) +
-                     "&version=" + urlEncode(target.version);
-  if (!openSecure(http, client, config, url)) return false;
+  String downloadUrl;
+
+  if (!target.url.isEmpty()) {
+    downloadUrl = target.url;
+    if (!openPublicSecure(http, client, downloadUrl)) {
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
+  } else {
+    downloadUrl = "https://" + config.host + "/api/v1/" + config.token +
+                  "/firmware?title=" + urlEncode(target.title) +
+                  "&version=" + urlEncode(target.version);
+    if (!openThingsBoardSecure(http, client, config, downloadUrl)) {
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
+  }
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     http.end();
     setError(String("FW HTTP ") + code);
+    reportState(config, "FAILED", errorText);
+    return false;
+  }
+
+  const int contentLength = http.getSize();
+  if (contentLength > 0 && size_t(contentLength) != target.size) {
+    http.end();
+    setError("FW CONTENT LENGTH KHONG KHOP");
     reportState(config, "FAILED", errorText);
     return false;
   }
@@ -400,6 +544,7 @@ bool downloadAndApply(const Config& config, const Target& target) {
         ok = false;
         break;
       }
+
       received += size_t(got);
       lastDataAt = millis();
       size_t percent = (received * 100U) / target.size;
@@ -439,10 +584,10 @@ bool downloadAndApply(const Config& config, const Target& target) {
     return false;
   }
 
-  // ThingsBoard OTA state machine: binary transfer finished, checksum next.
   progress = 100;
   reportState(config, "DOWNLOADED");
   currentState = State::Verifying;
+
   const String calculated = sha256Hex(digest);
   String expected = target.checksum;
   expected.toLowerCase();
@@ -462,8 +607,10 @@ bool downloadAndApply(const Config& config, const Target& target) {
   }
 
   reportState(config, "UPDATING");
-  Serial.printf("OTA verified: %s -> %s. Rebooting...\n",
-                hp20::version::STRING, target.version.c_str());
+  Serial.printf("OTA verified: %s -> %s via %s. Rebooting...\n",
+                hp20::version::STRING,
+                target.version.c_str(),
+                target.url.isEmpty() ? "ThingsBoard" : "GitHub");
   delay(800);
   ESP.restart();
   return true;
@@ -524,8 +671,6 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
     return;
   }
 
-  // Publish firmware identity + command capability once per boot so a dashboard
-  // can display exactly what the device is running and which RPC it accepts.
   if (!announced) {
     StaticJsonDocument<320> doc;
     doc["current_fw_title"] = hp20::version::TITLE;
@@ -537,10 +682,6 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
     if (postAttributes(config, body)) announced = true;
   }
 
-  // Dashboard action path. A ThingsBoard server-side RPC named updateFirmware
-  // (or checkFirmware) simply requests an immediate check of the firmware that
-  // is already assigned to this device. Assignment remains the control plane;
-  // the button is only the execution trigger.
   pollRpc(now, config);
 
   const uint32_t intervalMs = config.otaCheckSeconds * 1000UL;
