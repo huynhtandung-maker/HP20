@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.9.16 — GitHub TLS trust + explicit OTA apply
+
+- Fix `GITHUB SUMS HTTP -1` root cause: replace the single DigiCert GitHub trust anchor with a multi-root PEM trust set covering current GitHub/Release CDN chains (ISRG Root X1, USERTrust ECC/RSA, DigiCert G2 fallback).
+- Keep strict TLS verification; `setInsecure()` is not used.
+- Add up to 3 fresh-client retries for transient public HTTPS connection failures, with host/attempt diagnostics in Serial.
+- Background OTA checks now only report `UPDATE_AVAILABLE`; firmware installation requires explicit user/RPC action.
+- Preserve all v0.9.15 Wi-Fi provisioning UX improvements.
+
+
 ## v0.9.15 — Wi‑Fi Provisioning UX + External URL OTA acceptance
 
 - Nâng Wi‑Fi từ cấu hình một mạng thành tối đa 5 mạng đã nhớ trong NVS; mạng kết nối thành công gần nhất được ưu tiên.

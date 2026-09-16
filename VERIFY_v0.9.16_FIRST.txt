@@ -1,0 +1,9 @@
+HP20 v0.9.16 RC1
+
+1. Keep your local secrets.h.
+2. Replace project files with this package.
+3. Arduino IDE -> Verify only.
+4. Do NOT upload by USB unless explicitly choosing the USB bridge.
+5. After Verify passes, commit/push and let GitHub Actions create the canonical binary.
+
+Key fix: GitHub TLS trust is now multi-root; background OTA no longer auto-installs.

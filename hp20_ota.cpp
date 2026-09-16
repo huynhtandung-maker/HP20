@@ -191,11 +191,10 @@ bool openThingsBoardSecure(HTTPClient& http, WiFiClientSecure& client,
 bool openPublicSecure(HTTPClient& http, WiFiClientSecure& client,
                       const String& url) {
   // GitHub public HTTPS uses its own trust domain, separate from ThingsBoard.
-  // IMPORTANT: redirects are intentionally DISABLED here. GitHub release URLs
-  // redirect from github.com to a GitHub asset host. Some Arduino-ESP32 3.3.x
-  // HTTPS redirect paths can lose TLS trust state when the host changes and
-  // then return HTTP -1. HP20 follows redirects manually with a NEW secure
-  // client for every hop (see resolvePublicUrl()).
+  // GITHUB_ROOT_CA is intentionally a multi-root PEM trust set because
+  // github.com and GitHub's release CDN may terminate on different CA chains.
+  // Redirects remain disabled here; HP20 follows them manually with a NEW
+  // secure client for every hop (see resolvePublicUrl()).
   client.setCACert(hp20::ghtrust::GITHUB_ROOT_CA);
   client.setHandshakeTimeout(10);
   http.setConnectTimeout(8000);
@@ -255,30 +254,58 @@ bool resolvePublicUrl(const String& initialUrl, String& finalUrl,
   String url = initialUrl;
 
   for (uint8_t hop = 0; hop <= MAX_PUBLIC_REDIRECTS; ++hop) {
-    WiFiClientSecure client;
-    HTTPClient http;
-    if (!openPublicSecure(http, client, url)) return false;
+    int code = -999;
+    String location;
 
-    // GET is used only to resolve headers. On a redirect we close immediately;
-    // on the final 200 we also close and reopen the final URL with a fresh TLS
-    // client for the actual manifest/binary read. This intentionally avoids
-    // reusing a secure client across different HTTPS hosts.
-    const int code = http.GET();
+    // A public TLS request can fail transiently while Wi-Fi has just recovered.
+    // Retry the SAME host with a completely fresh TLS client before declaring
+    // the OTA session failed.  This does not bypass certificate verification.
+    for (uint8_t attempt = 1; attempt <= 3; ++attempt) {
+      WiFiClientSecure client;
+      HTTPClient http;
+      if (!openPublicSecure(http, client, url)) return false;
 
-    if (code == HTTP_CODE_OK) {
-      finalUrl = url;
+      Serial.printf("OTA HTTPS %s hop=%u try=%u host=%s\n",
+                    context, unsigned(hop), unsigned(attempt),
+                    publicHost(url).c_str());
+
+      // GET is used only to resolve headers. On a redirect we close immediately;
+      // on final 200 we also close and reopen with a fresh TLS client for the
+      // actual manifest/binary read.  No secure client crosses host boundaries.
+      code = http.GET();
+
+      if (code == HTTP_CODE_OK) {
+        finalUrl = url;
+        http.end();
+        return true;
+      }
+
+      if (isRedirectCode(code)) {
+        location = http.getLocation();
+        http.end();
+        break;
+      }
+
       http.end();
-      return true;
-    }
 
-    if (!isRedirectCode(code)) {
-      http.end();
+      if (code < 0 && attempt < 3 && WiFi.status() == WL_CONNECTED) {
+        Serial.printf("OTA HTTPS retry: %s host=%s code=%d\n",
+                      context, publicHost(url).c_str(), code);
+        delay(350U * attempt);
+        continue;
+      }
+
+      Serial.printf("OTA HTTPS failed: %s host=%s code=%d\n",
+                    context, publicHost(url).c_str(), code);
       setError(String(context) + " HTTP " + code);
       return false;
     }
 
-    const String location = http.getLocation();
-    http.end();
+    if (!isRedirectCode(code)) {
+      setError(String(context) + " HTTP " + code);
+      return false;
+    }
+
 
     if (location.isEmpty()) {
       setError(String(context) + " REDIRECT RONG");
@@ -968,7 +995,19 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
     return;
   }
 
-  // A background check that discovers a real update becomes visible here.
+  // Background checks DISCOVER updates but never install them silently.
+  // Installation is reserved for an explicit RPC/user request so the user owns
+  // the maintenance moment and can see/hear the OTA UX from the beginning.
+  if (!interactiveNow) {
+    currentState = State::UpdateAvailable;
+    progress = 0;
+    uxSessionActive = false;
+    reportState(config, "UPDATE_AVAILABLE");
+    Serial.printf("OTA update available: %s -> %s (waiting for user RPC)\n",
+                  hp20::version::STRING, target.version.c_str());
+    return;
+  }
+
   uxSessionActive = true;
   downloadAndApply(config, target);
 }
