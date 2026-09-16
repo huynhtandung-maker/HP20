@@ -45,6 +45,43 @@ bool announced = false;
 bool firstCheckDone = false;
 uint8_t progress = 0;
 String errorText;
+String targetVersionText;
+
+UxCallback uxCallback = nullptr;
+bool interactiveRequested = false;
+bool uxSessionActive = false;
+State lastUxState = State::Disabled;
+uint8_t lastUxProgress = 255;
+uint32_t lastUxAt = 0;
+
+constexpr uint32_t UX_PROGRESS_FRAME_MS = 180UL;
+
+void notifyUx(bool force = false) {
+  if (!uxCallback || !uxSessionActive) return;
+
+  const uint32_t now = millis();
+  const bool stateChanged = currentState != lastUxState;
+  const bool progressChanged = progress != lastUxProgress;
+
+  if (!force && !stateChanged && !progressChanged) return;
+  if (!force && !stateChanged &&
+      !model::elapsed(now, lastUxAt, UX_PROGRESS_FRAME_MS)) return;
+
+  lastUxState = currentState;
+  lastUxProgress = progress;
+  lastUxAt = now;
+
+  uxCallback(currentState,
+             progress,
+             targetVersionText.c_str(),
+             errorText.c_str());
+}
+
+void resetUxThrottle() {
+  lastUxState = State::Disabled;
+  lastUxProgress = 255;
+  lastUxAt = 0;
+}
 
 struct Target {
   String title;
@@ -125,6 +162,7 @@ bool newerThanCurrent(const String& candidate) {
 void setError(const String& message) {
   errorText = message;
   currentState = State::Failed;
+  notifyUx(true);
   Serial.printf("OTA error: %s\n", errorText.c_str());
 }
 
@@ -225,6 +263,7 @@ bool handleRpcCommand(const Config& config, const String& body) {
       reply["result"] = "OTA_DISABLED";
     } else {
       forceCheck = true;
+      interactiveRequested = true;
       reply["accepted"] = true;
       reply["result"] = "OTA_CHECK_SCHEDULED";
       reply["message"] = "HP20 will check the assigned ThingsBoard firmware now";
@@ -460,23 +499,36 @@ String sha256Hex(const uint8_t hash[32]) {
 }
 
 bool downloadAndApply(const Config& config, Target target) {
+  targetVersionText = target.version;
+
   if (target.title != hp20::version::TITLE) {
     setError("SAI FW TITLE");
     return false;
   }
   if (!newerThanCurrent(target.version)) {
     currentState = State::UpToDate;
+    progress = 100;
+    notifyUx(true);
     return true;
   }
+
+  // A real upgrade has been found. From this point onward, even a background
+  // periodic check becomes a visible human-feedback session.
+  uxSessionActive = true;
+  resetUxThrottle();
+  currentState = State::UpdateAvailable;
+  progress = 0;
+  notifyUx(true);
+
   if (!prepareTarget(target)) {
     reportState(config, "FAILED", errorText);
     return false;
   }
 
-  currentState = State::UpdateAvailable;
-  reportState(config, "DOWNLOADING");
   currentState = State::Downloading;
   progress = 0;
+  notifyUx(true);
+  reportState(config, "DOWNLOADING");
 
   WiFiClientSecure client;
   HTTPClient http;
@@ -593,6 +645,10 @@ bool downloadAndApply(const Config& config, Target target) {
       size_t percent = (received * 100U) / target.size;
       if (percent > 100U) percent = 100U;
       progress = uint8_t(percent);
+
+      // Crucial UX bridge: the normal loop is blocked during this download,
+      // so drive the registered OLED callback directly from the stream loop.
+      notifyUx(false);
       delay(1);
     } else {
       if (!http.connected() && received < target.size) {
@@ -628,8 +684,9 @@ bool downloadAndApply(const Config& config, Target target) {
   }
 
   progress = 100;
-  reportState(config, "DOWNLOADED");
   currentState = State::Verifying;
+  notifyUx(true);
+  reportState(config, "DOWNLOADED");
 
   const String calculated = sha256Hex(digest);
   String expected = target.checksum;
@@ -641,20 +698,29 @@ bool downloadAndApply(const Config& config, Target target) {
     return false;
   }
 
-  reportState(config, "VERIFIED");
   currentState = State::Applying;
+  notifyUx(true);
+  reportState(config, "VERIFIED");
+
   if (!Update.end(false)) {
     setError(String("UPDATE END: ") + Update.errorString());
     reportState(config, "FAILED", errorText);
     return false;
   }
 
+  currentState = State::Restarting;
+  progress = 100;
+  notifyUx(true);
   reportState(config, "UPDATING");
+
   Serial.printf("OTA verified: %s -> %s via %s. Rebooting...\n",
                 hp20::version::STRING,
                 target.version.c_str(),
                 target.url.isEmpty() ? "ThingsBoard" : "GitHub");
-  delay(800);
+
+  // Give the user enough time to see/hear the completion confirmation before
+  // the MCU resets. The binary is already committed by Update.end(false).
+  delay(1400);
   ESP.restart();
   return true;
 }
@@ -666,26 +732,37 @@ void begin() {
   lastCheckAt = millis();
   lastRpcPollAt = millis();
   forceCheck = false;
+  interactiveRequested = false;
+  uxSessionActive = false;
   announced = false;
   firstCheckDone = false;
   progress = 0;
   errorText = "";
+  targetVersionText = "";
+  resetUxThrottle();
 }
 
 void requestCheck() {
   forceCheck = true;
+  interactiveRequested = true;
+}
+
+void setUxCallback(UxCallback callback) {
+  uxCallback = callback;
 }
 
 bool busy() {
   return currentState == State::Checking ||
          currentState == State::Downloading ||
          currentState == State::Verifying ||
-         currentState == State::Applying;
+         currentState == State::Applying ||
+         currentState == State::Restarting;
 }
 
 State state() { return currentState; }
 uint8_t progressPercent() { return progress; }
 const char* lastError() { return errorText.c_str(); }
+const char* targetVersion() { return targetVersionText.c_str(); }
 
 const char* label() {
   switch (currentState) {
@@ -697,6 +774,7 @@ const char* label() {
     case State::Downloading:     return "OTA: DANG TAI";
     case State::Verifying:       return "OTA: KIEM TRA SHA";
     case State::Applying:        return "OTA: DANG CAP NHAT";
+    case State::Restarting:      return "OTA: KHOI DONG LAI";
     case State::Failed:          return "OTA: LOI";
   }
   return "OTA: ?";
@@ -732,12 +810,22 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
   const bool periodicDue = firstCheckDone && model::elapsed(now, lastCheckAt, intervalMs);
   if (!forceCheck && !firstDue && !periodicDue) return;
 
+  const bool interactiveNow = forceCheck && interactiveRequested;
   forceCheck = false;
+  interactiveRequested = false;
+  uxSessionActive = interactiveNow;
+  resetUxThrottle();
+
   firstCheckDone = true;
   lastCheckAt = now;
   errorText = "";
+  targetVersionText = "";
   progress = 0;
   currentState = State::Checking;
+
+  // Only explicit user-triggered checks occupy the screen at this stage.
+  // Background checks stay quiet unless they actually find a new firmware.
+  notifyUx(true);
   reportState(config, "CHECKING");
 
   Target target;
@@ -746,9 +834,14 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
     return;
   }
 
+  targetVersionText = target.version;
+
   if (target.title.isEmpty() || target.version.isEmpty()) {
     currentState = State::UpToDate;
+    progress = 100;
+    notifyUx(true);
     reportState(config, "NO_FIRMWARE_ASSIGNED");
+    uxSessionActive = false;
     return;
   }
 
@@ -761,10 +854,14 @@ void tick(uint32_t now, const Config& config, bool safeToRun) {
   if (!newerThanCurrent(target.version)) {
     currentState = State::UpToDate;
     progress = 100;
+    notifyUx(true);
     reportState(config, "UPDATED");
+    uxSessionActive = false;
     return;
   }
 
+  // A background check that discovers a real update becomes visible here.
+  uxSessionActive = true;
   downloadAndApply(config, target);
 }
 

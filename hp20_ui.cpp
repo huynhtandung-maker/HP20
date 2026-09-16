@@ -25,7 +25,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
 #endif
 
 // =============================================================================
-// HP20 OLED UX v0.9.4
+// HP20 OLED UX v0.9.13
 // =============================================================================
 // 128x64 OLED = VERY SMALL information surface.
 // Maintenance rules:
@@ -50,6 +50,18 @@ bool portalWasActive = false;
 uint8_t currentPage = 0;
 uint32_t pageSince = 0;
 uint32_t drawnAt = 0;
+
+// Full-screen OTA overlay. Busy OTA states are sticky; terminal states remain
+// visible briefly so the user gets a clear confirmation instead of a silent
+// return to the normal 7-page carousel.
+bool otaOverlayVisible = false;
+bool otaOverlaySticky = false;
+ota::State otaOverlayState = ota::State::Waiting;
+uint8_t otaOverlayProgress = 0;
+String otaOverlayTarget;
+String otaOverlayError;
+uint32_t otaOverlaySince = 0;
+uint32_t otaOverlayHoldMs = 0;
 
 constexpr uint16_t MARQUEE_STEP_MS = 430;
 constexpr uint8_t MARQUEE_HOLD_STEPS = 6;
@@ -228,6 +240,133 @@ void drawTrendChart(float currentFeel) {
   oled.setCursor(1, 50); oled.print(mn, 1);
 }
 
+void drawOtaProgressBar(uint8_t pct) {
+  if (pct > 100) pct = 100;
+  const int x = 8;
+  const int y = 39;
+  const int w = 112;
+  const int h = 8;
+  oled.drawFrame(x, y, w, h);
+  const int fill = int((uint16_t(w - 2) * pct) / 100U);
+  if (fill > 0) oled.drawBox(x + 1, y + 1, fill, h - 2);
+}
+
+String otaVersionLine() {
+  if (!otaOverlayTarget.isEmpty()) {
+    return String("v") + hp20::version::STRING + "  >  v" + otaOverlayTarget;
+  }
+  return String("HIEN TAI v") + hp20::version::STRING;
+}
+
+void otaFooter(const String& text) {
+  oled.setFont(u8g2_font_4x6_tf);
+  drawCentered(63, clipped(text, 30));
+}
+
+void renderOtaOverlay(uint32_t now) {
+  if (!displayOk) return;
+
+  oled.clearBuffer();
+  title("HP20 / CAP NHAT");
+
+  oled.setFont(u8g2_font_5x7_tf);
+  drawCentered(20, clipped(otaVersionLine(), 24));
+
+  switch (otaOverlayState) {
+    case ota::State::Checking:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(35, "DANG KIEM TRA");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(51, "VUI LONG CHO...");
+      otaFooter("DANG TIM BAN FIRMWARE");
+      break;
+
+    case ota::State::UpdateAvailable:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(35, "CO BAN MOI");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(51, "CHUAN BI TAI...");
+      otaFooter("KHONG TAT NGUON");
+      break;
+
+    case ota::State::Downloading: {
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(33, String("DANG TAI  ") + String(otaOverlayProgress) + "%");
+      drawOtaProgressBar(otaOverlayProgress);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(55, "KHONG TAT NGUON");
+      otaFooter("DANG NHAN FIRMWARE");
+      break;
+    }
+
+    case ota::State::Verifying:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(34, "DANG XAC MINH");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(48, "SHA-256");
+      drawCentered(56, "KHONG TAT NGUON");
+      otaFooter("DU LIEU DA TAI 100%");
+      break;
+
+    case ota::State::Applying:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(34, "DANG CAI DAT");
+      drawOtaProgressBar(100);
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(55, "KHONG TAT NGUON");
+      otaFooter("DANG GHI FIRMWARE");
+      break;
+
+    case ota::State::Restarting:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(34, "HOAN TAT");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(48, otaOverlayTarget.isEmpty()
+                       ? String("FIRMWARE DA CAP NHAT")
+                       : String("SAN SANG v") + otaOverlayTarget);
+      drawCentered(56, "KHOI DONG LAI...");
+      otaFooter("CAP NHAT THANH CONG");
+      break;
+
+    case ota::State::UpToDate:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(35, "DA LA BAN MOI NHAT");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(51, "KHONG CAN CAP NHAT");
+      otaFooter(String("FW v") + hp20::version::STRING);
+      break;
+
+    case ota::State::Failed:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(34, "CAP NHAT THAT BAI");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(48, clipped(otaOverlayError.isEmpty()
+                               ? String("LOI KHONG XAC DINH")
+                               : otaOverlayError, 24));
+      drawCentered(56, "KIEM TRA HE THONG");
+      otaFooter("CO THE THU LAI");
+      break;
+
+    case ota::State::Disabled:
+    case ota::State::Waiting:
+    default:
+      oled.setFont(u8g2_font_6x10_tf);
+      drawCentered(35, "OTA SAN SANG");
+      oled.setFont(u8g2_font_5x7_tf);
+      drawCentered(51, "CHO LENH CAP NHAT");
+      otaFooter(String("FW v") + hp20::version::STRING);
+      break;
+  }
+
+  oled.sendBuffer();
+  drawnAt = now;
+}
+
+bool otaOverlayExpired(uint32_t now) {
+  if (!otaOverlayVisible || otaOverlaySticky) return false;
+  return model::elapsed(now, otaOverlaySince, otaOverlayHoldMs);
+}
+
 // Dynamic duration ensures the ONE marquee on a page can finish one full cycle.
 uint32_t pageDuration(uint8_t pageNumber, bool setupOpen,
                       const sensor::Reading& env, const char* cloudState) {
@@ -311,10 +450,69 @@ uint8_t page() {
   return currentPage;
 }
 
+void showOtaState(uint32_t now,
+                  ota::State state,
+                  uint8_t progress,
+                  const char* targetVersion,
+                  const char* errorText) {
+  otaOverlayState = state;
+  otaOverlayProgress = progress > 100 ? 100 : progress;
+  otaOverlayTarget = targetVersion ? String(targetVersion) : String();
+  otaOverlayError = errorText ? String(errorText) : String();
+  otaOverlaySince = now;
+
+  switch (state) {
+    case ota::State::Checking:
+    case ota::State::UpdateAvailable:
+    case ota::State::Downloading:
+    case ota::State::Verifying:
+    case ota::State::Applying:
+    case ota::State::Restarting:
+      otaOverlayVisible = true;
+      otaOverlaySticky = true;
+      otaOverlayHoldMs = 0;
+      break;
+
+    case ota::State::UpToDate:
+      otaOverlayVisible = true;
+      otaOverlaySticky = false;
+      otaOverlayHoldMs = 6000UL;
+      break;
+
+    case ota::State::Failed:
+      otaOverlayVisible = true;
+      otaOverlaySticky = false;
+      otaOverlayHoldMs = 12000UL;
+      break;
+
+    case ota::State::Disabled:
+    case ota::State::Waiting:
+    default:
+      otaOverlayVisible = false;
+      otaOverlaySticky = false;
+      otaOverlayHoldMs = 0;
+      return;
+  }
+
+  // Immediate draw is intentional: downloadAndApply() blocks the normal loop.
+  renderOtaOverlay(now);
+}
+
 void tick(uint32_t now, const sensor::Reading& env, const char* cloudState, const char* otaState) {
   const bool setupOpen = portalActive();
   if (setupOpen && !portalWasActive) showSetupPage(now);
   portalWasActive = setupOpen;
+
+  if (otaOverlayExpired(now)) {
+    otaOverlayVisible = false;
+    otaOverlaySticky = false;
+  }
+
+  if (otaOverlayVisible) {
+    if (!displayOk || !model::elapsed(now, drawnAt, 200)) return;
+    renderOtaOverlay(now);
+    return;
+  }
 
   if (!displayOk || !model::elapsed(now, drawnAt, 200)) return;
   drawnAt = now;

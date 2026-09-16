@@ -91,6 +91,89 @@ void startBootBuzzer(uint32_t now) {
   Serial.println("BUZZER boot test: ON");
 }
 
+void otaBuzzerPulse(uint16_t onMs, uint16_t gapMs = 0) {
+  if (settings::PASSIVE_BUZZER) tone(settings::BUZZER_PIN, 2300);
+  else digitalWrite(settings::BUZZER_PIN, HIGH);
+
+  delay(onMs);
+  buzzerOff();
+  if (gapMs) delay(gapMs);
+}
+
+void otaUxCallback(hp20::ota::State state,
+                   uint8_t progress,
+                   const char* targetVersion,
+                   const char* errorText) {
+  // OLED first: even if the buzzer is sounding, the user immediately sees why.
+  hp20::ui::showOtaState(millis(), state, progress, targetVersion, errorText);
+
+  // During maintenance the thermal-comfort green signal is not meaningful.
+  // Turn it off until normal loop control resumes or the MCU reboots.
+  if (state == hp20::ota::State::Checking ||
+      state == hp20::ota::State::UpdateAvailable ||
+      state == hp20::ota::State::Downloading ||
+      state == hp20::ota::State::Verifying ||
+      state == hp20::ota::State::Applying ||
+      state == hp20::ota::State::Restarting) {
+    digitalWrite(settings::LED_PIN, LOW);
+  }
+
+  static hp20::ota::State lastState = hp20::ota::State::Disabled;
+  if (state == lastState) return;
+
+  // Prevent a thermal reminder or boot-test tone from being left active when an
+  // OTA maintenance session takes ownership of the buzzer.
+  buzzing = false;
+  bootBeeping = false;
+  buzzerOff();
+
+  switch (state) {
+    case hp20::ota::State::Checking:
+      // One short acknowledgement: the update request was received.
+      otaBuzzerPulse(45);
+      break;
+
+    case hp20::ota::State::UpdateAvailable:
+      // If this update was discovered in the background there was no CHECKING
+      // acknowledgement, so emit one concise attention pulse.
+      if (lastState != hp20::ota::State::Checking) otaBuzzerPulse(55);
+      break;
+
+    case hp20::ota::State::Applying:
+      // Two short pulses mark the critical flash/write phase.
+      otaBuzzerPulse(40, 45);
+      otaBuzzerPulse(85);
+      break;
+
+    case hp20::ota::State::Restarting:
+      // Positive completion signature before reboot.
+      otaBuzzerPulse(55, 45);
+      otaBuzzerPulse(120);
+      break;
+
+    case hp20::ota::State::UpToDate:
+      // The user's explicit check completed and no upgrade is required.
+      otaBuzzerPulse(75);
+      break;
+
+    case hp20::ota::State::Failed:
+      // Distinct triple pulse: update stopped and needs attention.
+      otaBuzzerPulse(85, 55);
+      otaBuzzerPulse(85, 55);
+      otaBuzzerPulse(120);
+      break;
+
+    case hp20::ota::State::Disabled:
+    case hp20::ota::State::Waiting:
+    case hp20::ota::State::Downloading:
+    case hp20::ota::State::Verifying:
+    default:
+      break;
+  }
+
+  lastState = state;
+}
+
 void connectWifi() {
   if (config.ssid.isEmpty()) return;
   WiFi.begin(config.ssid.c_str(), config.password.c_str());
@@ -329,13 +412,13 @@ void controlsTick(uint32_t now) {
       const uint32_t p = now % 3000;
       blue = p < 80 || (p >= 200 && p < 280) || (p >= 400 && p < 480);
     }
+    else if (hp20::ota::busy()) blue = (now % 500) < 250;
     else if (remind) blue = (now % 1000) < 150;
     else if (portalActive()) {
       const uint32_t p = now % 2000;
       blue = p < 80 || (p >= 200 && p < 280);
     }
     else if (WiFi.status() != WL_CONNECTED) blue = (now % 2000) < 80;
-    else if (hp20::ota::busy()) blue = (now % 500) < 250;
     else if (inFlight) blue = (now % 400) < 60;
     else blue = (now % 8000) < 50;
 
@@ -455,6 +538,7 @@ void setup() {
   hp20::thermal::reset();
   hp20::trend::reset();
   hp20::ui::begin();
+  hp20::ota::setUxCallback(otaUxCallback);
   hp20::ota::begin();
 
   const bool configLoaded = loadConfig(config);
