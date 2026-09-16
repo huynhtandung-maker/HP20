@@ -45,7 +45,8 @@ constexpr float UI_SMOOTH_OLD = 0.78f;
 
 // ============================================================================
 // LOCAL FEEL THRESHOLD TUNING AREA
-// Profile intent: indoor study / desk work in hot-humid Southern Vietnam.
+// Profile: VN-HOT-HUMID v1 (HP20 v0.9.17).
+// Intent: indoor study / desk work in hot-humid Southern Vietnam.
 // Unit: degrees Celsius of calculated FEEL / Heat Index, NOT raw air temp.
 //
 // RULE FOR READING EACH LINE:
@@ -53,55 +54,56 @@ constexpr float UI_SMOOTH_OLD = 0.78f;
 //   When FEEL reaches X, it moves to the NEXT band.
 //
 // Example:
-//   FEEL_COMFORT_MAX = 31.0
-//   -> 28.0 <= FEEL < 31.0  => Comfort
-//   -> FEEL >= 31.0         => WarmComfort
+//   FEEL_COMFORT_MAX = 32.0
+//   -> 29.0 <= FEEL < 32.0  => Comfort
+//   -> FEEL >= 32.0         => WarmComfort
 //
 // These are interpretation thresholds, NOT medical diagnostic limits.
 // ============================================================================
 
-// FEEL below 25.0 C -> Cool.
-// Meaning: noticeably cool relative to the local indoor working profile.
-constexpr float FEEL_COOL_MAX = 25.0f;
+// FEEL below 27.5 C -> Cool.
+// Meaning: noticeably cool relative to the local hot-humid working profile.
+constexpr float FEEL_COOL_MAX = 27.5f;
 
-// 25.0 <= FEEL < 28.0 C -> MildCool.
-// Meaning: cool / fresh, usually easy to tolerate for desk work.
-constexpr float FEEL_MILD_COOL_MAX = 28.0f;
+// 27.5 <= FEEL < 29.0 C -> MildCool.
+// Meaning: cool / fresh and usually easy to tolerate for desk work.
+constexpr float FEEL_MILD_COOL_MAX = 29.0f;
 
-// 28.0 <= FEEL < 31.0 C -> Comfort.
-// Meaning: current default "target comfort" region starts here.
-constexpr float FEEL_COMFORT_MAX = 31.0f;
+// 29.0 <= FEEL < 32.0 C -> Comfort.
+// Meaning: preferred comfortable range for sedentary work in this local profile.
+constexpr float FEEL_COMFORT_MAX = 32.0f;
 
-// 31.0 <= FEEL < 33.0 C -> WarmComfort.
-// Meaning: warm but still potentially comfortable for heat-acclimatized users.
-constexpr float FEEL_WARM_COMFORT_MAX = 33.0f;
+// 32.0 <= FEEL < 34.5 C -> WarmComfort.
+// Meaning: warm but still acceptable for many heat-acclimatized users,
+// especially when airflow is available.
+constexpr float FEEL_WARM_COMFORT_MAX = 34.5f;
 
-// 33.0 <= FEEL < 35.0 C -> SlightStuffy.
-// Meaning: first noticeable transition from warm to slightly stuffy.
-constexpr float FEEL_SLIGHT_STUFFY_MAX = 35.0f;
+// 34.5 <= FEEL < 36.5 C -> SlightStuffy.
+// Meaning: first noticeable transition from warm comfort toward stuffiness.
+constexpr float FEEL_SLIGHT_STUFFY_MAX = 36.5f;
 
-// 35.0 <= FEEL < 37.0 C -> MildStuffy.
+// 36.5 <= FEEL < 38.5 C -> MildStuffy.
 // Meaning: mild stuffiness; airflow begins to matter more.
-constexpr float FEEL_MILD_STUFFY_MAX = 37.0f;
+constexpr float FEEL_MILD_STUFFY_MAX = 38.5f;
 
-// 37.0 <= FEEL < 39.0 C -> Stuffy.
+// 38.5 <= FEEL < 40.5 C -> Stuffy.
 // Meaning: clearly stuffy; prolonged desk work may feel less comfortable.
-constexpr float FEEL_STUFFY_MAX = 39.0f;
+constexpr float FEEL_STUFFY_MAX = 40.5f;
 
-// 39.0 <= FEEL < 41.0 C -> StuffyHot.
+// 40.5 <= FEEL < 42.5 C -> StuffyHot.
 // Meaning: stuffy + hot; active cooling starts becoming more valuable.
-constexpr float FEEL_STUFFY_HOT_MAX = 41.0f;
+constexpr float FEEL_STUFFY_HOT_MAX = 42.5f;
 
-// 41.0 <= FEEL < 44.0 C -> Hot.
+// 42.5 <= FEEL < 45.0 C -> Hot.
 // Meaning: hot enough that the room is no longer considered good for long,
 // focused desk work under this local profile.
-constexpr float FEEL_HOT_MAX = 44.0f;
+constexpr float FEEL_HOT_MAX = 45.0f;
 
-// 44.0 <= FEEL < 47.0 C -> HighHot.
+// 45.0 <= FEEL < 47.5 C -> HighHot.
 // Meaning: high heat perception; cooling should become a priority.
-constexpr float FEEL_HIGH_HOT_MAX = 47.0f;
+constexpr float FEEL_HIGH_HOT_MAX = 47.5f;
 
-// 47.0 <= FEEL < 50.0 C -> VeryHot.
+// 47.5 <= FEEL < 50.0 C -> VeryHot.
 // Meaning: very hot; prolonged exposure is increasingly undesirable.
 constexpr float FEEL_VERY_HOT_MAX = 50.0f;
 
@@ -119,8 +121,8 @@ constexpr float FEEL_HEAT_LOAD_MAX = 54.0f;
 // This is a visual target, not a hard safety boundary.
 // Keep LOW < HIGH and place both values inside the range you want the OLED
 // chart to highlight as the preferred work/study zone.
-constexpr float TARGET_FEEL_LOW  = 28.0f;
-constexpr float TARGET_FEEL_HIGH = 33.0f;
+constexpr float TARGET_FEEL_LOW  = 29.0f;
+constexpr float TARGET_FEEL_HIGH = 34.5f;
 
 // ---------------------------------------------------------------------------
 // HUMIDITY / RAW-TEMPERATURE MODIFIERS FOR ADVICE TEXT ONLY
@@ -130,8 +132,8 @@ constexpr float TARGET_FEEL_HIGH = 33.0f;
 // useful action such as airflow vs dehumidification.
 constexpr float DRIVER_TEMP_HIGH_C       = 33.0f; // raw/calibrated room temp
 constexpr float RH_MODERATELY_HIGH       = 65.0f; // starts to feel humid
-constexpr float RH_HIGH                  = 72.0f; // humidity clearly matters
-constexpr float RH_VERY_HIGH             = 80.0f; // strong humidity burden
+constexpr float RH_HIGH                  = 75.0f; // humidity clearly matters
+constexpr float RH_VERY_HIGH             = 85.0f; // strong humidity burden
 constexpr float RH_ACTION_DRY_PRIORITY   = 75.0f; // prefer airflow + drying
 constexpr float TEMP_SENSOR_CHECK_HIGH_C = 34.0f; // prompt reference check
 
@@ -201,37 +203,37 @@ const State& state() {
 Band bandForFeel(float hi) {
   if (!std::isfinite(hi)) return Band::NoData;
 
-  // FEEL < 25.0 C -> Cool
+  // FEEL < 27.5 C -> Cool
   if      (hi < FEEL_COOL_MAX)          return Band::Cool;
 
-  // 25.0 <= FEEL < 28.0 C -> MildCool
+  // 27.5 <= FEEL < 29.0 C -> MildCool
   else if (hi < FEEL_MILD_COOL_MAX)     return Band::MildCool;
 
-  // 28.0 <= FEEL < 31.0 C -> Comfort
+  // 29.0 <= FEEL < 32.0 C -> Comfort
   else if (hi < FEEL_COMFORT_MAX)       return Band::Comfort;
 
-  // 31.0 <= FEEL < 33.0 C -> WarmComfort
+  // 32.0 <= FEEL < 34.5 C -> WarmComfort
   else if (hi < FEEL_WARM_COMFORT_MAX)  return Band::WarmComfort;
 
-  // 33.0 <= FEEL < 35.0 C -> SlightStuffy
+  // 34.5 <= FEEL < 36.5 C -> SlightStuffy
   else if (hi < FEEL_SLIGHT_STUFFY_MAX) return Band::SlightStuffy;
 
-  // 35.0 <= FEEL < 37.0 C -> MildStuffy
+  // 36.5 <= FEEL < 38.5 C -> MildStuffy
   else if (hi < FEEL_MILD_STUFFY_MAX)   return Band::MildStuffy;
 
-  // 37.0 <= FEEL < 39.0 C -> Stuffy
+  // 38.5 <= FEEL < 40.5 C -> Stuffy
   else if (hi < FEEL_STUFFY_MAX)        return Band::Stuffy;
 
-  // 39.0 <= FEEL < 41.0 C -> StuffyHot
+  // 40.5 <= FEEL < 42.5 C -> StuffyHot
   else if (hi < FEEL_STUFFY_HOT_MAX)    return Band::StuffyHot;
 
-  // 41.0 <= FEEL < 44.0 C -> Hot
+  // 42.5 <= FEEL < 45.0 C -> Hot
   else if (hi < FEEL_HOT_MAX)           return Band::Hot;
 
-  // 44.0 <= FEEL < 47.0 C -> HighHot
+  // 45.0 <= FEEL < 47.5 C -> HighHot
   else if (hi < FEEL_HIGH_HOT_MAX)      return Band::HighHot;
 
-  // 47.0 <= FEEL < 50.0 C -> VeryHot
+  // 47.5 <= FEEL < 50.0 C -> VeryHot
   else if (hi < FEEL_VERY_HOT_MAX)      return Band::VeryHot;
 
   // 50.0 <= FEEL < 54.0 C -> HeatLoad
@@ -500,10 +502,8 @@ const char* chartRelation(Band b) {
       return "THAP HON MUC TIEU";
 
     case Band::Comfort:
-      return "TRONG MUC TIEU";
-
     case Band::WarmComfort:
-      return "SAT MEP MUC TIEU";
+      return "TRONG MUC TIEU";
 
     case Band::SlightStuffy:
     case Band::MildStuffy:
