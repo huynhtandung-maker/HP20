@@ -1,5 +1,6 @@
 #include "hp20_ota.h"
 #include "thingsboard_ca.h"
+#include "github_ca.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
@@ -150,9 +151,10 @@ bool openThingsBoardSecure(HTTPClient& http, WiFiClientSecure& client,
 
 bool openPublicSecure(HTTPClient& http, WiFiClientSecure& client,
                       const String& url) {
-  // Public Internet targets (GitHub + release-assets redirect) use the
-  // Arduino-ESP32 built-in Mozilla CA bundle instead of the ThingsBoard CA.
-  client.useBuiltinCACertBundle();
+  // GitHub public HTTPS uses its own trust domain, separate from ThingsBoard.
+  // Arduino-ESP32 3.3.11 does not expose useBuiltinCACertBundle(), so HP20
+  // verifies GitHub with an explicit trusted root CA.
+  client.setCACert(hp20::ghtrust::GITHUB_ROOT_CA);
   client.setHandshakeTimeout(10);
   http.setConnectTimeout(8000);
   http.setTimeout(HTTP_TIMEOUT_MS);
