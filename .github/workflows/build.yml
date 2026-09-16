@@ -47,7 +47,7 @@ jobs:
           VERSION=$(grep 'constexpr const char\* STRING' hp20_version.h | sed -E 's/.*"([^"]+)".*/\1/')
           cp /tmp/hp20-sh1106/HP20.ino.bin "/tmp/hp20-artifacts/HP20-v${VERSION}-SH1106.bin"
           cp /tmp/hp20-ssd1306/HP20.ino.bin "/tmp/hp20-artifacts/HP20-v${VERSION}-SSD1306.bin"
-          sha256sum /tmp/hp20-artifacts/*.bin > /tmp/hp20-artifacts/SHA256SUMS.txt
+          (cd /tmp/hp20-artifacts && sha256sum *.bin > SHA256SUMS.txt)
 
       - name: Upload OTA-ready firmware binaries
         uses: actions/upload-artifact@v4

@@ -22,3 +22,5 @@ This patch fixes the repeatable `GITHUB SUMS HTTP -1` failure seen when HP20 v0.
 ## Bridge validation path
 
 Because v0.9.14 itself contains the broken GitHub trust set, v0.9.16 must be installed once through the known-good ThingsBoard-hosted binary path (or USB). After v0.9.16 is running, validate External URL OTA with the next release.
+
+- Normalize `SHA256SUMS.txt` entries to release-asset basenames; CI now emits basename-only checksums and the device parser tolerates legacy path-prefixed entries.

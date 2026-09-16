@@ -31,3 +31,5 @@ Periodic/background OTA checks now only announce `UPDATE_AVAILABLE`. They no lon
 ## Migration constraint
 
 The fix cannot repair the downloader already running inside v0.9.14. Therefore v0.9.16 must first reach the device through the known-good ThingsBoard-hosted binary path or USB. Once v0.9.16 is running, the next release can be used to validate GitHub External URL OTA end-to-end.
+
+- Normalize `SHA256SUMS.txt` entries to release-asset basenames; CI now emits basename-only checksums and the device parser tolerates legacy path-prefixed entries.

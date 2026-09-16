@@ -156,3 +156,5 @@
 - Wi-Fi cấu hình có mật khẩu, lưu Wi-Fi/token/CA trong NVS.
 - HTTPS có xác minh chứng chỉ; giới hạn nhịp gửi, không backlog, nghỉ khi lỗi/quota.
 - Kiểm tra mô hình, GitHub Actions và tài liệu sử dụng.
+
+- Normalize `SHA256SUMS.txt` entries to release-asset basenames; CI now emits basename-only checksums and the device parser tolerates legacy path-prefixed entries.

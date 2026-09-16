@@ -576,6 +576,17 @@ bool resolveGitHubManifest(Target& target) {
           filename.trim();
         }
 
+        // CI tools may emit either a bare asset name or a path.  Only the
+        // basename is relevant because the GitHub Release asset itself is
+        // addressed by ref.asset.  Normalizing here keeps OTA robust even if
+        // the build workspace path changes.
+        const int slashA = filename.lastIndexOf('/');
+        const int slashB = filename.lastIndexOf('\\');
+        const int slash = slashA > slashB ? slashA : slashB;
+        if (slash >= 0 && slash < int(filename.length()) - 1) {
+          filename = filename.substring(slash + 1);
+        }
+
         if (filename == ref.asset) {
           sha.toLowerCase();
           target.algorithm = "SHA256";
