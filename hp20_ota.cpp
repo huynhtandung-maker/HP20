@@ -191,19 +191,115 @@ bool openThingsBoardSecure(HTTPClient& http, WiFiClientSecure& client,
 bool openPublicSecure(HTTPClient& http, WiFiClientSecure& client,
                       const String& url) {
   // GitHub public HTTPS uses its own trust domain, separate from ThingsBoard.
-  // Arduino-ESP32 3.3.11 does not expose useBuiltinCACertBundle(), so HP20
-  // verifies GitHub with an explicit trusted root CA.
+  // IMPORTANT: redirects are intentionally DISABLED here. GitHub release URLs
+  // redirect from github.com to a GitHub asset host. Some Arduino-ESP32 3.3.x
+  // HTTPS redirect paths can lose TLS trust state when the host changes and
+  // then return HTTP -1. HP20 follows redirects manually with a NEW secure
+  // client for every hop (see resolvePublicUrl()).
   client.setCACert(hp20::ghtrust::GITHUB_ROOT_CA);
   client.setHandshakeTimeout(10);
   http.setConnectTimeout(8000);
   http.setTimeout(HTTP_TIMEOUT_MS);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  http.setReuse(false);
 
   if (!http.begin(client, url)) {
     setError("KHONG MO PUBLIC HTTPS");
     return false;
   }
   return true;
+}
+
+constexpr uint8_t MAX_PUBLIC_REDIRECTS = 6;
+
+bool isRedirectCode(int code) {
+  return code == HTTP_CODE_MOVED_PERMANENTLY ||
+         code == HTTP_CODE_FOUND ||
+         code == HTTP_CODE_SEE_OTHER ||
+         code == HTTP_CODE_TEMPORARY_REDIRECT ||
+         code == HTTP_CODE_PERMANENT_REDIRECT;
+}
+
+String publicHost(const String& url) {
+  const String prefix = "https://";
+  if (!url.startsWith(prefix)) return "?";
+  const int slash = url.indexOf('/', prefix.length());
+  if (slash < 0) return url.substring(prefix.length());
+  return url.substring(prefix.length(), slash);
+}
+
+String absoluteRedirectUrl(const String& currentUrl, const String& location) {
+  if (location.startsWith("https://")) return location;
+
+  // HP20 deliberately refuses HTTPS -> HTTP downgrade.
+  if (location.startsWith("http://")) return String();
+
+  const String prefix = "https://";
+  if (!currentUrl.startsWith(prefix)) return String();
+
+  const int hostEnd = currentUrl.indexOf('/', prefix.length());
+  const String origin = hostEnd < 0 ? currentUrl : currentUrl.substring(0, hostEnd);
+
+  if (location.startsWith("/")) return origin + location;
+
+  // Relative redirect path. Resolve against the current URL directory.
+  const int query = currentUrl.indexOf('?');
+  String base = query >= 0 ? currentUrl.substring(0, query) : currentUrl;
+  const int lastSlash = base.lastIndexOf('/');
+  if (lastSlash < int(prefix.length())) return String();
+  return base.substring(0, lastSlash + 1) + location;
+}
+
+bool resolvePublicUrl(const String& initialUrl, String& finalUrl,
+                      const char* context) {
+  String url = initialUrl;
+
+  for (uint8_t hop = 0; hop <= MAX_PUBLIC_REDIRECTS; ++hop) {
+    WiFiClientSecure client;
+    HTTPClient http;
+    if (!openPublicSecure(http, client, url)) return false;
+
+    // GET is used only to resolve headers. On a redirect we close immediately;
+    // on the final 200 we also close and reopen the final URL with a fresh TLS
+    // client for the actual manifest/binary read. This intentionally avoids
+    // reusing a secure client across different HTTPS hosts.
+    const int code = http.GET();
+
+    if (code == HTTP_CODE_OK) {
+      finalUrl = url;
+      http.end();
+      return true;
+    }
+
+    if (!isRedirectCode(code)) {
+      http.end();
+      setError(String(context) + " HTTP " + code);
+      return false;
+    }
+
+    const String location = http.getLocation();
+    http.end();
+
+    if (location.isEmpty()) {
+      setError(String(context) + " REDIRECT RONG");
+      return false;
+    }
+
+    const String nextUrl = absoluteRedirectUrl(url, location);
+    if (nextUrl.isEmpty() || !nextUrl.startsWith("https://")) {
+      setError(String(context) + " REDIRECT KHONG HTTPS");
+      return false;
+    }
+
+    Serial.printf("OTA HTTPS redirect %u: %s -> %s\n",
+                  unsigned(hop + 1),
+                  publicHost(url).c_str(),
+                  publicHost(nextUrl).c_str());
+    url = nextUrl;
+  }
+
+  setError(String(context) + " QUA NHIEU REDIRECT");
+  return false;
 }
 
 bool postAttributes(const Config& config, const String& json) {
@@ -394,14 +490,21 @@ bool resolveGitHubManifest(Target& target) {
       "https://github.com/" + ref.owner + "/" + ref.repo +
       "/releases/download/" + ref.tag + "/SHA256SUMS.txt";
 
+  String resolvedManifestUrl;
+  if (!resolvePublicUrl(manifestUrl, resolvedManifestUrl, "GITHUB SUMS")) {
+    return false;
+  }
+
+  // Open the already-resolved final HTTPS URL with a fresh TLS client.
+  // No HTTPClient cross-host redirect is allowed in this request.
   WiFiClientSecure client;
   HTTPClient http;
-  if (!openPublicSecure(http, client, manifestUrl)) return false;
+  if (!openPublicSecure(http, client, resolvedManifestUrl)) return false;
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     http.end();
-    setError(String("GITHUB SUMS HTTP ") + code);
+    setError(String("GITHUB SUMS FINAL HTTP ") + code);
     return false;
   }
 
@@ -535,7 +638,12 @@ bool downloadAndApply(const Config& config, Target target) {
   String downloadUrl;
 
   if (!target.url.isEmpty()) {
-    downloadUrl = target.url;
+    // Resolve GitHub's cross-host release redirect explicitly, then create the
+    // streaming request directly against the final HTTPS asset URL.
+    if (!resolvePublicUrl(target.url, downloadUrl, "FW RELEASE")) {
+      reportState(config, "FAILED", errorText);
+      return false;
+    }
     if (!openPublicSecure(http, client, downloadUrl)) {
       reportState(config, "FAILED", errorText);
       return false;
